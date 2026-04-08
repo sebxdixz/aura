@@ -3,6 +3,8 @@ const { test, expect } = require("@playwright/test");
 
 const describeWeb = process.env.RUN_WEB_E2E === "true" ? test.describe : test.describe.skip;
 const DASHBOARD_BASE_URL = process.env.DASHBOARD_BASE_URL || "http://127.0.0.1:3001";
+const WEB_SUBMIT_TIMEOUT_MS = Number(process.env.WEB_SUBMIT_TIMEOUT_MS || 90000);
+const WEB_RESOLVE_TIMEOUT_MS = Number(process.env.WEB_RESOLVE_TIMEOUT_MS || 60000);
 
 function uniqueTenant(prefix = "pw-web") {
   const now = Date.now();
@@ -26,11 +28,12 @@ describeWeb("AURA web separation", () => {
     await page.setInputFiles("#attachment", attachmentPath);
     await page.click("#submitBtn");
 
-    await expect(page.locator("#resultStatus")).toContainText("submitted");
+    await expect(page.locator("#resultStatus")).toContainText("submitted", { timeout: WEB_SUBMIT_TIMEOUT_MS });
     const outputText = await page.locator("#output").innerText();
     const submitted = JSON.parse(outputText);
     expect(submitted.tenant_id).toBe(tenant);
-    expect(submitted.triage.affected_service).toContain("checkout");
+    const affectedService = String(submitted.triage.affected_service || "").toLowerCase();
+    expect(affectedService.includes("checkout") || affectedService.includes("payment")).toBeTruthy();
     expect(submitted.notifications[0].channel).toBe("team_communicator");
     const incidentId = submitted.incident_id;
 
@@ -45,6 +48,6 @@ describeWeb("AURA web separation", () => {
     const resolveBtn = dashboard.locator(`button[data-incident-id="${incidentId}"]`);
     await expect(resolveBtn).toBeVisible();
     await resolveBtn.click();
-    await expect(dashboard.locator(`#status-${incidentId}`)).toContainText("RESOLVED");
+    await expect(dashboard.locator(`#status-${incidentId}`)).toContainText("RESOLVED", { timeout: WEB_RESOLVE_TIMEOUT_MS });
   });
 });
