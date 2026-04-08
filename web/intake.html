@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURA Report Portal</title>
+  <meta name="description" content="Public incident intake portal for e-commerce users." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --black: #000;
+      --white: #fff;
+      --g50: #fafafa;
+      --g100: #f4f4f4;
+      --g150: #ededed;
+      --g200: #dfdfdf;
+      --g300: #c7c7c7;
+      --g500: #6e6e6e;
+      --g700: #2f2f2f;
+      --font-sans: "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--g100);
+      color: var(--black);
+      min-height: 100vh;
+      background-image: radial-gradient(circle, var(--g300) 1px, transparent 1px);
+      background-size: 22px 22px;
+    }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px 16px 40px;
+    }
+
+    .topbar {
+      border: 1px solid var(--g200);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      text-transform: uppercase;
+    }
+
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      border: 1px solid var(--g200);
+      padding: 6px 10px;
+      color: var(--g700);
+      background: var(--white);
+      white-space: nowrap;
+    }
+
+    .hero {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      padding: 22px 20px;
+      margin-bottom: 16px;
+    }
+
+    .overline {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--g500);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 34px;
+      line-height: 0.95;
+      letter-spacing: -1px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .hero p {
+      color: var(--g700);
+      font-size: 14px;
+      line-height: 1.5;
+      max-width: 560px;
+    }
+
+    .context-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--g200);
+      margin-bottom: 16px;
+      background: var(--white);
+    }
+
+    .context-cell {
+      border-right: 1px solid var(--g200);
+      padding: 12px 14px;
+    }
+
+    .context-cell:last-child { border-right: none; }
+
+    .context-k {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--g500);
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .context-v {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--black);
+      word-break: break-all;
+    }
+
+    form {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      margin-bottom: 16px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .field {
+      border-right: 1px solid var(--g200);
+      border-bottom: 1px solid var(--g200);
+    }
+
+    .row .field:last-child { border-right: none; }
+
+    .field-label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--g500);
+      background: var(--g50);
+      border-bottom: 1px solid var(--g150);
+      padding: 9px 12px 6px;
+    }
+
+    .field input,
+    .field textarea,
+    .field select {
+      width: 100%;
+      border: none;
+      outline: none;
+      padding: 11px 12px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      color: var(--black);
+      background: transparent;
+    }
+
+    .field textarea { min-height: 120px; resize: vertical; }
+
+    .field.full {
+      grid-column: 1 / -1;
+      border-right: none;
+    }
+
+    .actions {
+      border-top: 1px solid var(--g200);
+      background: var(--g50);
+      padding: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      padding: 0 18px;
+      height: 40px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--g500);
+      letter-spacing: 0.5px;
+    }
+
+    .out {
+      border: 1px solid var(--g200);
+      background: var(--white);
+    }
+
+    .out-head {
+      border-bottom: 1px solid var(--g200);
+      background: var(--g50);
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .out-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.8px;
+      color: var(--g500);
+      text-transform: uppercase;
+    }
+
+    .badge {
+      border: 1px solid var(--g200);
+      padding: 4px 8px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--g700);
+      background: var(--white);
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--g700);
+      overflow: auto;
+      max-height: 280px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #toasts {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 2000;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--black);
+      color: var(--white);
+      border: 1px solid var(--black);
+      padding: 8px 12px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.6px;
+    }
+
+    .toast.err {
+      background: var(--white);
+      color: var(--black);
+      border-color: var(--g700);
+    }
+
+    @media (max-width: 720px) {
+      .row,
+      .context-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .context-cell,
+      .field {
+        border-right: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">AURA</div>
+      <div class="chip">Public Report Portal</div>
+    </div>
+
+    <section class="hero">
+      <div class="overline">E-commerce Incident Intake</div>
+      <h1>Report Incident</h1>
+      <p>
+        This portal is for customer/user incident intake only. The operations dashboard
+        is isolated in a separate frontend.
+      </p>
+    </section>
+
+    <section class="context-grid">
+      <div class="context-cell">
+        <div class="context-k">Tenant Context</div>
+        <div class="context-v" id="tenantContext">general</div>
+      </div>
+      <div class="context-cell">
+        <div class="context-k">Current Path</div>
+        <div class="context-v" id="currentPath">/</div>
+      </div>
+    </section>
+
+    <form id="incidentForm">
+      <div class="row">
+        <div class="field">
+          <div class="field-label">Reporter Name</div>
+          <input id="reporter_name" placeholder="Jane Doe" required />
+        </div>
+        <div class="field">
+          <div class="field-label">Reporter Email</div>
+          <input id="reporter_email" type="email" placeholder="reporter@company.com" required />
+        </div>
+      </div>
+
+      <div class="field full">
+        <div class="field-label">Issue Category</div>
+        <select id="issue_type" required>
+          <option value="" selected disabled>Select issue type...</option>
+          <option value="checkout">Checkout / Payment</option>
+          <option value="login">Login / Access</option>
+          <option value="catalog">Catalog / Search</option>
+          <option value="orders">Orders / Shipping</option>
+          <option value="performance">Performance / Errors</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <div class="field full">
+        <div class="field-label">Description</div>
+        <textarea id="description" placeholder="Describe what happened, impact, and when it started..." required></textarea>
+      </div>
+
+      <div class="field full">
+        <div class="field-label">Attachment (Optional)</div>
+        <input id="attachment" type="file" accept=".txt,.csv,.json,.pdf,.png,.jpg,.jpeg,.wav,.mp3,.mp4,.m4a,.webm,.ogg" />
+      </div>
+
+      <div class="actions">
+        <button type="submit" id="submitBtn">Submit Incident</button>
+        <span class="hint">Allowed: text, csv, json, pdf, images, audio. Max 5 MB.</span>
+      </div>
+    </form>
+
+    <section class="out">
+      <div class="out-head">
+        <span class="out-title">Submission Output</span>
+        <span class="badge" id="resultStatus">waiting</span>
+      </div>
+      <pre id="output">{}</pre>
+    </section>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script>
+    const API = window.location.hostname === "localhost"
+      ? "http://localhost:8000"
+      : `${location.protocol}//${location.hostname}:8000`;
+
+    const tenantFromPath = (window.location.pathname.match(/^\/intake\/([A-Za-z0-9._-]+)\/?$/) || [])[1] || "";
+    const tenantFromQuery = new URLSearchParams(window.location.search).get("tenant_id") || "";
+    const tenantId = decodeURIComponent(tenantFromPath || tenantFromQuery || "general");
+
+    document.getElementById("tenantContext").textContent = tenantId;
+    document.getElementById("currentPath").textContent = window.location.pathname + window.location.search;
+
+    const form = document.getElementById("incidentForm");
+    const output = document.getElementById("output");
+    const status = document.getElementById("resultStatus");
+    const submitBtn = document.getElementById("submitBtn");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+
+      const reporterName = document.getElementById("reporter_name").value.trim();
+      const reporterEmail = document.getElementById("reporter_email").value.trim();
+      const issueType = document.getElementById("issue_type").value;
+      const description = document.getElementById("description").value.trim();
+      const attachment = document.getElementById("attachment").files[0];
+
+      const fd = new FormData();
+      fd.append("tenant_id", tenantId);
+      fd.append("reporter_email", reporterEmail);
+      fd.append("description", `[${issueType.toUpperCase()}] ${description} (reported_by=${reporterName})`);
+      if (attachment) fd.append("attachment", attachment);
+
+      try {
+        const response = await fetch(`${API}/api/incidents/submit`, { method: "POST", body: fd });
+        const data = await response.json();
+        output.textContent = JSON.stringify(data, null, 2);
+        if (!response.ok) throw new Error(data.detail || "submit failed");
+        status.textContent = "submitted";
+        toast(`Incident ${String(data.incident_id || "").toUpperCase()} submitted`);
+      } catch (error) {
+        status.textContent = "error";
+        toast(String(error.message || error), true);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit Incident";
+      }
+    });
+
+    function toast(message, isError = false) {
+      const el = document.createElement("div");
+      el.className = `toast${isError ? " err" : ""}`;
+      el.textContent = message;
+      document.getElementById("toasts").appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+  </script>
+</body>
+</html>

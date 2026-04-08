@@ -1,0 +1,306 @@
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+
+from .database import SessionLocal, get_db, ping_db
+from .guardrails import validate_description, validate_file
+from .insights import get_tenant_audit_logs, get_tenant_insights_summary
+from .models import (
+    AuditLogRecord,
+    FileMeta,
+    IncidentRecord,
+    NotificationRecord,
+    TenantDashboard,
+    TenantInsightsSummary,
+    TenantRecord,
+)
+from .observability import log_event, metrics_snapshot
+from .rag import auto_index_enabled, rag_status, reindex_codebase
+from .services import (
+    create_incident_id,
+    create_ticket,
+    ensure_tenant,
+    find_duplicate_incident,
+    get_incident,
+    get_tenant,
+    list_incidents,
+    notify_team,
+    register_tenant,
+    resolve_incident,
+    run_triage,
+    save_incident,
+    tenant_dashboard,
+)
+
+app = FastAPI(title="AURA API", version="0.3.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class TenantRegisterPayload(BaseModel):
+    tenant_id: str
+    name: str
+
+
+@app.on_event("startup")
+def startup_rag_bootstrap() -> None:
+    db = SessionLocal()
+    try:
+        status = rag_status(db)
+        if auto_index_enabled():
+            log_event("rag_index_started", repo_name=status["repo_name"])
+            result = reindex_codebase(db)
+            log_event(
+                "rag_index_finished",
+                repo_name=result.get("repo_name"),
+                indexed_chunks=result.get("indexed_chunks", 0),
+                indexed_files=result.get("indexed_files", 0),
+                skipped=result.get("skipped", False),
+            )
+    except Exception as exc:
+        log_event("rag_index_failed", error=str(exc))
+    finally:
+        db.close()
+
+
+# ──────────────────────────────────────────────────────────────
+# Health / meta
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    log_event("health_check")
+    db_status = "ok" if ping_db() else "degraded"
+    return {"status": "ok", "service": "api", "db": db_status}
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"name": "AURA API", "stage": "multi_tenant_persistent"}
+
+
+@app.get("/metrics")
+def metrics() -> dict[str, object]:
+    snapshot = metrics_snapshot()
+    return {"service": "api", **snapshot}
+
+
+# ──────────────────────────────────────────────────────────────
+# Incident endpoints
+# ──────────────────────────────────────────────────────────────
+
+@app.get("/api/incidents", response_model=list[IncidentRecord])
+def api_list_incidents(
+    tenant_id: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[IncidentRecord]:
+    """List incidents. Filter by tenant_id query param when provided."""
+    return list_incidents(db, tenant_id=tenant_id)
+
+
+@app.get("/api/incidents/{incident_id}", response_model=IncidentRecord)
+def api_get_incident(
+    incident_id: str,
+    db: Session = Depends(get_db),
+) -> IncidentRecord:
+    incident = get_incident(db, incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="incident not found")
+    return incident
+
+
+@app.post("/api/incidents/submit", response_model=IncidentRecord)
+async def submit_incident(
+    tenant_id: str = Form(...),
+    reporter_email: str = Form(...),
+    description: str = Form(...),
+    attachment: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+) -> IncidentRecord:
+    try:
+        validate_description(description)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    file_meta: FileMeta | None = None
+    file_bytes: bytes | None = None
+    has_file = attachment is not None
+    if attachment is not None:
+        file_bytes = await attachment.read()
+        try:
+            validate_file(attachment.content_type, len(file_bytes))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        file_meta = FileMeta(
+            filename=attachment.filename or "unknown",
+            content_type=attachment.content_type or "application/octet-stream",
+            size_bytes=len(file_bytes),
+        )
+
+    incident_id = create_incident_id()
+    ensure_tenant(db, tenant_id=tenant_id)
+    log_event("incident_ingested", incident_id=incident_id, tenant_id=tenant_id, has_file=has_file)
+
+    duplicate = find_duplicate_incident(db, tenant_id=tenant_id, description=description)
+    if duplicate:
+        triage = duplicate.triage.model_copy(deep=True)
+        triage.is_duplicate = True
+        triage.duplicate_of_incident_id = duplicate.incident_id
+        triage.dedup_confidence = 0.98
+        triage.technical_summary = (
+            f"Deduplicated incident linked to {duplicate.incident_id}. "
+            f"{triage.technical_summary}"
+        )
+        dedup_note = NotificationRecord(
+            channel="team_communicator",
+            status="sent",
+            detail=f"Deduplicated with {duplicate.incident_id}; skipped new ticket/alert.",
+        )
+        incident = IncidentRecord(
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            reporter_email=reporter_email,
+            description=description,
+            file_meta=file_meta,
+            triage=triage,
+            ticket=duplicate.ticket,
+            notifications=[dedup_note],
+        )
+        save_incident(db, incident)
+        log_event(
+            "incident_deduplicated",
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            duplicate_of=duplicate.incident_id,
+        )
+        return incident
+
+    triage = run_triage(
+        description=description,
+        has_file=has_file,
+        attachment_filename=file_meta.filename if file_meta else None,
+        attachment_content_type=file_meta.content_type if file_meta else None,
+        attachment_bytes=file_bytes,
+        db=db,
+    )
+    log_event("incident_triaged", incident_id=incident_id, severity=triage.severity, service=triage.affected_service)
+
+    ticket = create_ticket(
+        incident_id=incident_id,
+        triage=triage,
+        tenant_id=tenant_id,
+        description=description,
+    )
+    team_notification = notify_team(
+        incident_id=incident_id,
+        ticket=ticket,
+        triage=triage,
+        tenant_id=tenant_id,
+        reporter_email=reporter_email,
+        description=description,
+    )
+
+    incident = IncidentRecord(
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        reporter_email=reporter_email,
+        description=description,
+        file_meta=file_meta,
+        triage=triage,
+        ticket=ticket,
+        notifications=[team_notification],
+    )
+    save_incident(db, incident)
+    return incident
+
+
+@app.post("/api/incidents/{incident_id}/resolve", response_model=IncidentRecord)
+def api_resolve_incident(
+    incident_id: str,
+    db: Session = Depends(get_db),
+) -> IncidentRecord:
+    incident = resolve_incident(db, incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="incident not found")
+    return incident
+
+
+# ──────────────────────────────────────────────────────────────
+# Tenant endpoints
+# ──────────────────────────────────────────────────────────────
+
+@app.post("/api/tenants/register", response_model=TenantRecord)
+def api_register_tenant(
+    payload: TenantRegisterPayload,
+    db: Session = Depends(get_db),
+) -> TenantRecord:
+    if not payload.tenant_id.strip() or not payload.name.strip():
+        raise HTTPException(status_code=400, detail="tenant_id and name are required")
+    return register_tenant(db, tenant_id=payload.tenant_id.strip(), name=payload.name.strip())
+
+
+@app.get("/api/tenants/{tenant_id}", response_model=TenantRecord)
+def api_get_tenant(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+) -> TenantRecord:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    return tenant
+
+
+@app.get("/api/tenants/{tenant_id}/dashboard", response_model=TenantDashboard)
+def api_tenant_dashboard(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+) -> TenantDashboard:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    return tenant_dashboard(db, tenant_id=tenant_id)
+
+
+@app.get("/api/tenants/{tenant_id}/audit-logs", response_model=list[AuditLogRecord])
+def api_tenant_audit_logs(
+    tenant_id: str,
+    limit: int = 100,
+    incident_id: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[AuditLogRecord]:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    return get_tenant_audit_logs(db, tenant_id=tenant_id, limit=limit, incident_id=incident_id)
+
+
+@app.get("/api/tenants/{tenant_id}/insights/summary", response_model=TenantInsightsSummary)
+def api_tenant_insights_summary(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+) -> TenantInsightsSummary:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    return get_tenant_insights_summary(db, tenant_id=tenant_id)
+
+
+@app.get("/api/rag/status")
+def api_rag_status(db: Session = Depends(get_db)) -> dict[str, object]:
+    return rag_status(db)
+
+
+@app.post("/api/rag/reindex")
+def api_rag_reindex(db: Session = Depends(get_db)) -> dict[str, object]:
+    log_event("rag_reindex_triggered")
+    return reindex_codebase(db)

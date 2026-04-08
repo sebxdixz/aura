@@ -1,0 +1,1 @@
+Checkout failed with HTTP 500 after applying coupon code.

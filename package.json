@@ -1,0 +1,31 @@
+{
+  "name": "aura",
+  "version": "1.0.0",
+  "description": "AURA automated E2E test harness (Playwright)",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test:e2e",
+    "test:e2e": "node scripts/wait-api.js && playwright test tests/e2e/api-contract.spec.js",
+    "test:e2e:all": "node scripts/wait-api.js && set RUN_WEB_E2E=true&& playwright test",
+    "test:e2e:web": "node scripts/wait-api.js && set RUN_WEB_E2E=true&& playwright test tests/e2e/web-intake.spec.js",
+    "test:e2e:api": "node scripts/wait-api.js && playwright test tests/e2e/api-contract.spec.js",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "pw:install": "playwright install chromium"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebxdixz/aura.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sebxdixz/aura/issues"
+  },
+  "homepage": "https://github.com/sebxdixz/aura#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}

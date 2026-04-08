@@ -1,0 +1,168 @@
+# AGENTS_USE.md
+
+This document explains how AURA agents are implemented and how they are used in the current version.
+
+## 1. Use Cases
+
+- Intake and triage of incident reports from UI.
+- Role-separated frontend:
+  - public report portal (`web`, port 3000)
+  - operations dashboard (`web_dashboard`, port 3001)
+- Conversion of unstructured input into strict structured output.
+- Automatic creation of a Jira ticket (real or mock).
+- Team notification via Slack webhook (real or mock).
+- Reporter notification when incident is marked resolved (mock email, real SMTP TBD).
+
+## 2. Agent Design
+
+### Agent A: Ingestor (Structured Triage)
+
+Responsibilities:
+
+- Validate and sanitize incoming content.
+- Accept multimodal payloads (text + attachment).
+- Produce strict triage JSON schema with:
+  - `severity` + `severity_score` + `severity_rationale`
+  - `affected_service`
+  - `technical_summary`
+  - `root_cause_analysis`
+  - `proposed_fix`
+  - `proposed_cli_command`
+  - `runbook_suggestions`
+  - `relevant_files`
+  - `is_duplicate` / `duplicate_of_incident_id`
+  - `llm_mode`
+
+Current implementation:
+
+- Endpoint: `POST /api/incidents/submit`
+- Schema: `api/app/models.py`
+- Guardrails: `api/app/guardrails.py`
+- RAG retrieval over e-commerce codebase chunks stored in PostgreSQL + pgvector.
+- Optional two-stage live path via OpenRouter:
+  - Stage 1 extractor model (`OPENROUTER_MULTIMODAL_MODEL`, default `google/gemini-2.5-flash`)
+  - Stage 2 analysis model (`OPENROUTER_ANALYSIS_MODEL`) for final triage JSON.
+
+### Agent B: ReAct Orchestrator (Operational Actions)
+
+Responsibilities:
+
+- Create ticket via Jira Cloud API or mock.
+- Notify team via Slack Incoming Webhook or mock.
+- Notify reporter on resolution.
+- Post Slack resolution message when incident is resolved.
+
+Current implementation:
+
+- Ticket tool: `create_ticket` in `api/app/services.py`
+  - Routes to `api/app/integrations/jira.py` when `TICKETING_PROVIDER=jira`
+- Team notify tool: `notify_team` in `api/app/services.py`
+  - Routes to `api/app/integrations/slack.py` when `COMMUNICATOR_PROVIDER=slack`
+- Reporter notify tool: `notify_reporter` in `api/app/services.py`
+- Slack resolution: `notify_slack_resolved` called automatically on resolve
+- Optional ReAct mode (`REACT_ENGINE=openrouter_mcp`):
+  - planner model via OpenRouter API
+  - Jira/Slack action execution via MCP tools
+  - fallback to direct providers when MCP/OpenRouter path fails
+
+## 3. Observability Evidence
+
+Current API emits structured logs for stages:
+
+- `incident_ingested`
+- `incident_triaged`
+- `ticket_created`
+- `jira_ticket_created` / `jira_ticket_failed`
+- `team_notified`
+- `slack_notification_sent` / `slack_notification_failed`
+- `incident_resolved`
+- `slack_resolved_sent`
+- `reporter_notified`
+- `integration_retry`
+- `integration_fallback`
+- `tenant_registered`
+- `incident_saved`
+
+All events persisted in `audit_logs` table (PostgreSQL).
+
+Where:
+
+- Log function: `api/app/observability.py`
+- Metrics endpoint: `GET /metrics`
+- Correlation key: `incident_id` (plus `tenant_id` where available)
+- Operational endpoints:
+  - `GET /api/tenants/{tenant_id}/audit-logs`
+  - `GET /api/tenants/{tenant_id}/insights/summary`
+  - `GET /api/rag/status`
+  - `POST /api/rag/reindex`
+
+## 4. Safety Measures
+
+- Input length limits and empty input rejection.
+- Prompt-injection keyword detection (basic rule-based).
+- File type allowlist and file size max limit.
+- Tool allowlist to avoid unauthorized actions (`create_ticket`, `notify_team`, `notify_reporter`).
+
+## 5. Integrations
+
+### Activation
+
+Set in `.env`:
+
+```
+# To enable real Jira:
+MOCK_MODE=false
+TICKETING_PROVIDER=jira
+JIRA_BASE_URL=https://your-org.atlassian.net
+JIRA_EMAIL=sre@your-org.com
+JIRA_API_TOKEN=your-atlassian-api-token
+JIRA_PROJECT_KEY=AURA
+
+# To enable real Slack:
+COMMUNICATOR_PROVIDER=slack
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
+
+# To enable ReAct (OpenRouter + MCP):
+REACT_ENGINE=openrouter_mcp
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=openai/gpt-4o-mini
+MCP_BRIDGE_URL=https://your-mcp-bridge.example.com/invoke
+# or set MCP_JIRA_URL / MCP_SLACK_URL directly
+
+# To enable two-stage multimodal triage with OpenRouter:
+MOCK_MODE=false
+MULTIMODAL_PIPELINE=openrouter_two_stage
+OPENROUTER_MULTIMODAL_MODEL=google/gemini-2.5-flash
+OPENROUTER_ANALYSIS_MODEL=<stronger_model>
+```
+
+### Jira Integration (`api/app/integrations/jira.py`)
+
+- Uses Jira REST API v3 (`POST /rest/api/3/issue`).
+- Creates issues with Atlassian Document Format (ADF) rich text body.
+- Body includes: severity, RCA, auto-fix, CLI command, tenant labels.
+- Severity → Jira Priority mapping: `critical→Highest`, `high→High`, `medium→Medium`, `low→Low`.
+- Falls back to mock when `MOCK_MODE=true` or credentials are missing.
+
+### Slack Integration (`api/app/integrations/slack.py`)
+
+- Uses Slack Incoming Webhooks with Block Kit.
+- Sends rich alert block with: severity badge, service, ticket link, RCA, auto-fix, CLI, runbook steps.
+- Color-coded: red (critical), orange (high), yellow (medium), green (low).
+- Sends a separate "✅ Resolved" block when incident is marked resolved.
+- Falls back to mock when `MOCK_MODE=true` or `SLACK_WEBHOOK_URL` is missing.
+
+### Reliability
+
+- Retries configurable with `INTEGRATION_RETRIES` and `INTEGRATION_RETRY_DELAY_MS`.
+- Provider fallback for each integration path:
+  - Ticketing: `TICKETING_PROVIDER` → `TICKETING_FALLBACK_PROVIDER`
+  - Team communicator: `COMMUNICATOR_PROVIDER` → `COMMUNICATOR_FALLBACK_PROVIDER`
+  - Reporter email: `EMAIL_PROVIDER` → `EMAIL_FALLBACK_PROVIDER`
+
+## 6. Multi-Tenant Isolation
+
+- All data scoped to `tenant_id` at storage level (PostgreSQL).
+- `GET /api/incidents?tenant_id=X` returns only tenant X's data.
+- Dashboard queries use `WHERE tenant_id = :tid` with aggregate filters.
+- Audit logs include `tenant_id` on every event.

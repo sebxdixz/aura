@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURA Ops Dashboard</title>
+  <meta name="description" content="Internal operations dashboard for incident triage and resolution." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --black: #000;
+      --white: #fff;
+      --g50: #fafafa;
+      --g100: #f4f4f4;
+      --g150: #ededed;
+      --g200: #dfdfdf;
+      --g300: #c7c7c7;
+      --g500: #6e6e6e;
+      --g700: #2f2f2f;
+      --font-sans: "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--g100);
+      color: var(--black);
+      min-height: 100vh;
+      background-image: radial-gradient(circle, var(--g300) 1px, transparent 1px);
+      background-size: 22px 22px;
+    }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 16px 40px;
+    }
+
+    .topbar {
+      border: 1px solid var(--g200);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+
+    .brand {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      text-transform: uppercase;
+    }
+
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      border: 1px solid var(--g200);
+      padding: 6px 10px;
+      color: var(--g700);
+      background: var(--white);
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      padding: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .toolbar label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--g500);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .toolbar input {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      color: var(--black);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 9px 10px;
+      min-width: 260px;
+      outline: none;
+    }
+
+    button {
+      border: none;
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      padding: 0 16px;
+      height: 36px;
+      cursor: pointer;
+    }
+
+    button.ghost {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      color: var(--g700);
+    }
+
+    .status {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--g500);
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      border: 1px solid var(--g200);
+      background: var(--white);
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      border-right: 1px solid var(--g200);
+      padding: 16px;
+    }
+
+    .stat:last-child { border-right: none; }
+
+    .stat-k {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--g500);
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      margin-bottom: 10px;
+    }
+
+    .stat-v {
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: -2px;
+      line-height: 0.95;
+    }
+
+    .panel {
+      border: 1px solid var(--g200);
+      background: var(--white);
+    }
+
+    .panel-head {
+      border-bottom: 1px solid var(--g200);
+      background: var(--g50);
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-title {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: var(--g500);
+    }
+
+    .panel-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--g500);
+    }
+
+    .table-wrap { overflow: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--g150);
+      padding: 10px 12px;
+      text-align: left;
+    }
+
+    th {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.3px;
+      color: var(--g500);
+      background: var(--g50);
+    }
+
+    td {
+      font-size: 12px;
+      color: var(--g700);
+      vertical-align: middle;
+    }
+
+    .mono { font-family: var(--font-mono); font-size: 11px; }
+
+    .sev {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+      border: 1px solid var(--g200);
+      padding: 3px 7px;
+      display: inline-block;
+    }
+
+    .status-pill {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+      border: 1px solid var(--g200);
+      padding: 3px 7px;
+      display: inline-block;
+    }
+
+    .empty {
+      padding: 24px;
+      font-family: var(--font-mono);
+      color: var(--g500);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+
+    #toasts {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 2000;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--black);
+      color: var(--white);
+      border: 1px solid var(--black);
+      padding: 8px 12px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.6px;
+    }
+
+    .toast.err {
+      background: var(--white);
+      color: var(--black);
+      border-color: var(--g700);
+    }
+
+    @media (max-width: 820px) {
+      .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .stat:nth-child(2n) { border-right: none; }
+      .status { width: 100%; margin-left: 0; }
+      .toolbar input { min-width: 220px; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">AURA</div>
+      <div class="chip">Internal Ops Dashboard</div>
+    </div>
+
+    <section class="toolbar">
+      <label for="tenant_id">Tenant Workspace</label>
+      <input id="tenant_id" placeholder="acme-store" />
+      <button id="loadWorkspaceBtn" type="button">Load Workspace</button>
+      <button id="refreshBtn" class="ghost" type="button">Refresh</button>
+      <div class="status" id="statusMsg">waiting for tenant</div>
+    </section>
+
+    <section class="stats">
+      <article class="stat">
+        <div class="stat-k">Total</div>
+        <div class="stat-v" id="stat_total">0</div>
+      </article>
+      <article class="stat">
+        <div class="stat-k">Open</div>
+        <div class="stat-v" id="stat_open">0</div>
+      </article>
+      <article class="stat">
+        <div class="stat-k">Resolved</div>
+        <div class="stat-v" id="stat_resolved">0</div>
+      </article>
+      <article class="stat">
+        <div class="stat-k">Critical</div>
+        <div class="stat-v" id="stat_critical">0</div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Incidents</span>
+        <span class="panel-meta" id="incidentsCount">0 records</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Incident</th>
+              <th>Description</th>
+              <th>Severity</th>
+              <th>Service</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="incidentsBody">
+            <tr><td colspan="7" class="empty">No incidents loaded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script>
+    const API = window.location.hostname === "localhost"
+      ? "http://localhost:8000"
+      : `${location.protocol}//${location.hostname}:8000`;
+
+    const tenantInput = document.getElementById("tenant_id");
+    const statusMsg = document.getElementById("statusMsg");
+    const incidentsBody = document.getElementById("incidentsBody");
+    const incidentsCount = document.getElementById("incidentsCount");
+
+    let currentTenant = "";
+
+    document.getElementById("loadWorkspaceBtn").addEventListener("click", loadWorkspace);
+    document.getElementById("refreshBtn").addEventListener("click", () => currentTenant ? loadWorkspace() : null);
+
+    incidentsBody.addEventListener("click", async (event) => {
+      const btn = event.target.closest("button[data-incident-id]");
+      if (!btn) return;
+      const incidentId = btn.getAttribute("data-incident-id");
+      await resolveIncident(incidentId);
+    });
+
+    async function loadWorkspace() {
+      const tenant = tenantInput.value.trim();
+      if (!tenant) {
+        toast("Tenant is required", true);
+        return;
+      }
+      currentTenant = tenant;
+      statusMsg.textContent = `loading ${tenant}...`;
+
+      const params = new URLSearchParams(window.location.search);
+      params.set("tenant_id", tenant);
+      history.replaceState(null, "", `/?${params.toString()}`);
+
+      try {
+        const [dashboardRes, incidentsRes] = await Promise.all([
+          fetch(`${API}/api/tenants/${encodeURIComponent(tenant)}/dashboard`),
+          fetch(`${API}/api/incidents?tenant_id=${encodeURIComponent(tenant)}`)
+        ]);
+
+        const dashboard = await dashboardRes.json();
+        const incidents = await incidentsRes.json();
+        if (!dashboardRes.ok) throw new Error(dashboard.detail || "tenant not found");
+        if (!incidentsRes.ok) throw new Error(incidents.detail || "incident list failed");
+
+        document.getElementById("stat_total").textContent = String(dashboard.total_incidents || 0);
+        document.getElementById("stat_open").textContent = String(dashboard.open_incidents || 0);
+        document.getElementById("stat_resolved").textContent = String(dashboard.resolved_incidents || 0);
+        document.getElementById("stat_critical").textContent = String(dashboard.critical_incidents || 0);
+
+        renderIncidents(incidents || []);
+        statusMsg.textContent = `workspace loaded: ${tenant}`;
+      } catch (error) {
+        statusMsg.textContent = "workspace load failed";
+        toast(String(error.message || error), true);
+      }
+    }
+
+    function renderIncidents(items) {
+      incidentsCount.textContent = `${items.length} records`;
+      if (!items.length) {
+        incidentsBody.innerHTML = '<tr><td colspan="7" class="empty">No incidents for this tenant.</td></tr>';
+        return;
+      }
+
+      incidentsBody.innerHTML = items.map((item) => {
+        const id = esc(item.incident_id || "");
+        const status = String(item.status || "").toLowerCase();
+        const created = String(item.created_at || "").replace("T", " ").slice(0, 19);
+        const sev = esc(item.triage?.severity || "low");
+        const svc = esc(item.triage?.affected_service || "-");
+        const desc = esc(item.description || "");
+
+        const action = status === "open"
+          ? `<button class="ghost" data-incident-id="${id}">Resolve</button>`
+          : "—";
+
+        return `
+          <tr>
+            <td class="mono">${id}</td>
+            <td>${desc}</td>
+            <td><span class="sev">${sev}</span></td>
+            <td class="mono">${svc}</td>
+            <td><span class="status-pill" id="status-${id}">${status.toUpperCase()}</span></td>
+            <td class="mono">${created}</td>
+            <td>${action}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function resolveIncident(incidentId) {
+      try {
+        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}/resolve`, { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "resolve failed");
+        toast(`Resolved ${incidentId.toUpperCase()}`);
+        await loadWorkspace();
+      } catch (error) {
+        toast(String(error.message || error), true);
+      }
+    }
+
+    function toast(message, isError = false) {
+      const el = document.createElement("div");
+      el.className = `toast${isError ? " err" : ""}`;
+      el.textContent = message;
+      document.getElementById("toasts").appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    function esc(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    const tenantFromQuery = new URLSearchParams(window.location.search).get("tenant_id");
+    if (tenantFromQuery) {
+      tenantInput.value = tenantFromQuery;
+      loadWorkspace();
+    }
+  </script>
+</body>
+</html>
