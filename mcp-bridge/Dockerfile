@@ -1,9 +1,11 @@
 FROM node:20-alpine
 
+ENV NODE_ENV=production
+
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev --no-audit --no-fund
 
 # mcp-atlassian is a Python package. We install both `mcp-atlassian`
 # and `uv/uvx` so command strategy can be switched via env vars.

@@ -1,26 +1,261 @@
-# AURA Scaling Strategy and Assumptions
+# SCALING
 
-AURA was explicitly engineered to handle multi-tenant B2B incident architectures instead of single-instance test environments. This document highlights the critical technical decisions, scaling assumptions, and the infrastructure design deployed to guarantee stability beneath high transactional loads.
+## Purpose
 
-## 1. Architectural Scaling Technical Decisions
+This document explains how AURA scales today, what its current limits are, and how the architecture would evolve beyond hackathon scope.
 
-### Containerization & Service Decoupling
-- **Docker Driven**: The stack uses pure `docker-compose` routing, meaning the Database, the Python API Processor, the Web Dashboards (NGINX), and the Node.js MCP Bridge execute asynchronously. As loads increase, platforms like AWS ECS or Kubernetes can horizontally scale out the API container or the NGINX frontend without affecting the relational structure.
-- **REST Backend over Websockets**: We adopted a stateless HTTP REST API using `FastAPI` (based on Starlette) allowing asynchronous connections. State and sessions are heavily decoupled, maintaining stateless authentication with Headers (`x-tenant-admin-key`).
+The goal is not to claim that the current stack is fully production-ready.
+The goal is to show that the design choices are **production-minded, intentional, and extensible**.
 
-### The Vector Search Paradigm
-Instead of downloading chunks of code or keeping text files alive in container memory, AURA relies on **PostgreSQL with `pgvector`**.
-- **The Vector Load limit**: By translating arbitrary codebase lengths (GitHub clones) into mathematical embeddings and saving them alongside basic incident structures, memory issues disappear. Fast Cosine Similarity Semantic search permits processing vast repos over 1,000 files in under 100ms on a cold start while preventing the LLM's context window from hallucinating or overloading.
+## 1. Current architecture
 
-### The Model Context Protocol (MCP) Node Bridge
-- Anthropic's MCP heavily defines local context servers connecting via standard I/O (console) specifically targeting user desktops (like Cursor or Claude integrations). We constructed an **HTTP-to-Stdio MCP Bridge**.
-- **Scaling Decision**: In enterprise networks, standard I/O connections choke the container if multiple users request tools simultaneously. With our Node Bridge proxy deployed independently, each agent iteration acts via a stateless HTTP endpoint. If the HTTP request crashes due to timeout or LLM failure, the backend gracefully catches the Exception without bringing down the core container console.
+Today the system is split into:
 
-## 2. Platform Assumptions
+- web surfaces
+  - unified app
+  - dashboard-only surface
+  - intake-only surface
+- stateless API
+- separate worker
+- PostgreSQL + pgvector
+- MCP bridge for optional tool execution
+- optional Jaeger tracing UI
 
-1. **Idempotency against API Rate Limits**: AURA assumes external LLM providers (OpenAI, OpenRouter, Jira, Slack) frequently generate 429 Status Rate limits. Our `services.py` layer contains retry mechanisms with robust exponential fallbacks gracefully mocking failed API operations via `.env` definitions (`MOCK_MODE=true` fallback) whenever rate limits strike.
-2. **Context Window Constraint**: We assume any production Codebase will easily overflow `gpt-4o-mini`'s actual 128k context token limit. Due to this, the `RAG` extraction is tuned to retrieve *only the top N chunks* of code related structurally to the incident before concatenating to the LLM.
-3. **Data Protection Constraints**: We assume that one Tenant submitting private backend code errors strictly cannot share vector clusters dynamically with a secondary Tenant. We hardcoded explicit `.where(TenantRecord.id == current_tenant)` partitions inside semantic retrieval algorithms.
+That separation already solves an important scaling problem:
 
-## 3. Future Proofing (Next Sprints)
-If adopted to handle +5,000 requests/minute, the roadmap dictates migrating the `main.py` Incident Submission task into a scalable distributed task queue software (like **Celery** or **RabbitMQ**). This would free the HTTP client of the end-user immediately, allowing real-time websockets (or polling) to transmit the Live AI animation processing sequentially without forcing an open HTTP timeout window on NGINX.
+- user-facing intake stays fast
+- heavy work runs asynchronously
+- resolution monitoring does not block the request path
+
+## 2. What scales reasonably well today
+
+### API layer
+
+The API is mostly stateless and persistence-first.
+That makes horizontal scaling straightforward in principle:
+
+- more API replicas
+- same shared database
+- same shared integrations
+
+This is stronger than an inline-only hackathon design because:
+
+- submit does not need to wait for full triage
+- ticket creation and notification are off the critical path
+
+### Worker separation
+
+The worker is the most important scaling feature already present.
+
+It allows:
+
+- async incident processing
+- retries without client involvement
+- isolation of slow integrations
+- future move to multiple worker replicas
+
+### RAG retrieval
+
+Current RAG usage is bounded:
+
+- tenant-scoped retrieval
+- top-k retrieval
+- chunk count limits
+- max files and max bytes controls
+
+This keeps context retrieval predictable for the current scope.
+
+### Multi-tenant model
+
+AURA already treats tenant isolation as a first-class concern:
+
+- tenant-scoped incidents
+- tenant-scoped vector chunks
+- tenant-scoped integration settings
+- tenant-scoped admin access
+
+That is the right foundation for growth.
+
+## 3. Current bottlenecks and honest limits
+
+### Job queue
+
+The queue is a database-backed `jobs` table.
+
+That is good for:
+
+- reproducibility
+- debugging
+- hackathon review
+- simple retry behavior
+
+But it is not ideal for:
+
+- very high concurrency
+- bursty workloads
+- large fleets of workers
+
+At larger scale, a dedicated broker would be more appropriate.
+
+### Resolution watcher
+
+The watcher is polling-first today.
+
+That is good for:
+
+- simplicity
+- provider independence
+- reliable demo behavior
+
+But it has known scaling costs:
+
+- repeated sync jobs
+- unnecessary provider calls
+- slower resolution propagation than webhooks
+
+### Observability backend
+
+OpenTelemetry is already wired in, but Jaeger is local/demo oriented.
+
+That is enough to prove:
+
+- traces exist
+- timings exist
+- async worker flow is observable
+
+It is not yet a long-term shared observability backend.
+
+### RAG storage
+
+PostgreSQL + pgvector is a good fit for the current demo scope.
+Eventually, scale pressure will show up in:
+
+- index size
+- ingestion time
+- query latency across many tenants and large repos
+
+## 4. How AURA would scale next
+
+### Queue and worker evolution
+
+Next step after the current `jobs` table:
+
+- move to a dedicated queue or broker
+  - Redis-backed worker system
+  - RabbitMQ
+  - SQS
+  - Kafka only if the broader platform needs it
+
+Why:
+
+- better fan-out
+- better worker concurrency control
+- cleaner retry/dead-letter semantics
+- easier isolation of job types
+
+### Watcher evolution: polling-first to webhook-first
+
+Current model:
+
+- polling sync jobs check ticket state
+
+Better future model:
+
+- webhook-first from Jira/provider
+- polling retained as backup reconciliation
+
+Why that is the right direction:
+
+- fewer external API calls
+- lower latency to resolution
+- lower worker load
+- cleaner large-tenant behavior
+
+### RAG scaling path
+
+Current path:
+
+- pgvector in the same operational database family
+
+Future path if repo size or tenant count grows:
+
+- separate vector store or dedicated retrieval service
+- background indexing workers
+- repository sync scheduling and backpressure
+- per-tenant indexing quotas and retention policies
+
+### Observability scaling path
+
+Current path:
+
+- local Jaeger + OTLP
+
+Future path:
+
+- OpenTelemetry Collector
+- shared trace backend such as Tempo, Jaeger, or vendor APM
+- central log aggregation
+- dashboards for queue depth, watcher lag, provider failures, and tenant hotspots
+
+## 5. Multi-tenant growth considerations
+
+As tenant count grows, the main concerns are:
+
+- isolation
+- noisy-neighbor effects
+- integration credential management
+- indexing fairness
+- queue fairness
+
+The current design already helps because:
+
+- tenant ID is embedded in the main data path
+- integrations are tenant-scoped
+- RAG retrieval is tenant-scoped
+- admin access is tenant-scoped
+
+Future improvements would include:
+
+- per-tenant worker quotas
+- per-tenant queue partitioning
+- per-tenant RAG indexing budgets
+- tenant-aware rate limiting
+
+## 6. What is intentionally simplified today
+
+These choices are intentional for the current scope:
+
+- database-backed queue instead of external broker
+- polling watcher instead of webhook-first
+- local Jaeger instead of centralized observability stack
+- narrow real-provider support instead of many provider integrations
+- mock-first defaults for reproducibility
+
+These simplifications reduce setup friction without invalidating the core architecture.
+
+## 7. Why the current design is still credible
+
+Even with hackathon simplifications, AURA already demonstrates the right architectural moves:
+
+- fast submit path
+- separate worker
+- explicit job lifecycle
+- idempotent reporter notification
+- tenant-scoped RAG
+- provider abstraction for external systems
+- traceable async flow
+
+That is the difference between:
+
+- a single-process demo
+- and a design that can actually evolve into a real incident operations system
+
+## 8. Near-term roadmap
+
+If this project continued past the hackathon, the highest-value next steps would be:
+
+1. move job execution to a dedicated broker
+2. add webhook-first resolution updates
+3. add queue depth and watcher lag dashboards
+4. separate vector indexing from request-serving concerns
+5. expand provider coverage with the same abstraction patterns

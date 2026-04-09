@@ -108,9 +108,11 @@ class TicketRecord(BaseModel):
 
 class NotificationRecord(BaseModel):
     channel: Literal["team_communicator", "reporter_email"]
-    status: Literal["sent", "failed"] = "sent"
+    status: Literal["sent", "failed", "skipped"] = "sent"
     sent_at: str = Field(default_factory=utc_now_iso)
     detail: str
+    provider: str | None = None
+    external_message_id: str | None = None
 
 
 class IncidentLinkRecord(BaseModel):

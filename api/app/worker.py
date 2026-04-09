@@ -18,7 +18,7 @@ from .jobs import (
     reschedule_job,
 )
 from .observability import log_event
-from .telemetry import setup_telemetry, start_span
+from .telemetry import attach_trace_context, detach_trace_context, setup_telemetry, start_span
 from . import repository as repo
 
 POLL_INTERVAL_SECONDS = float(os.getenv("WORKER_POLL_INTERVAL_SECONDS", "2"))
@@ -28,24 +28,29 @@ RETRY_DELAY_SECONDS = int(os.getenv("WORKER_RETRY_DELAY_SECONDS", "5"))
 
 def run_job(job: dict[str, object]) -> None:
     payload = dict(job["payload"])
+    trace_context = payload.pop("_trace_context", None)
     incident_id = payload.get("incident_id")
     job_type = str(job["job_type"])
-    with SessionLocal() as db:
-        log_event("job_started", incident_id=incident_id, job_id=job["id"], job_type=job_type)
-        with start_span("worker.run_job", **{"job.id": int(job["id"]), "job.type": job_type, "incident.id": incident_id}):
-            if job_type == JOB_TYPE_PROCESS_INCIDENT:
-                handle_process_incident(db, str(incident_id))
-            elif job_type == JOB_TYPE_SYNC_TICKET_STATUS:
-                handle_sync_ticket_status(
-                    db,
-                    incident_id=str(incident_id),
-                    provider=str(payload.get("provider", "")),
-                    external_ticket_id=str(payload.get("external_ticket_id", "")),
-                )
-            elif job_type == JOB_TYPE_NOTIFY_REPORTER:
-                handle_notify_reporter(db, str(incident_id))
-            else:
-                raise RuntimeError(f"unknown job type: {job_type}")
+    token = attach_trace_context(trace_context if isinstance(trace_context, dict) else None)
+    try:
+        with SessionLocal() as db:
+            log_event("job_started", incident_id=incident_id, job_id=job["id"], job_type=job_type)
+            with start_span("worker.run_job", **{"job.id": int(job["id"]), "job.type": job_type, "incident.id": incident_id}):
+                if job_type == JOB_TYPE_PROCESS_INCIDENT:
+                    handle_process_incident(db, str(incident_id))
+                elif job_type == JOB_TYPE_SYNC_TICKET_STATUS:
+                    handle_sync_ticket_status(
+                        db,
+                        incident_id=str(incident_id),
+                        provider=str(payload.get("provider", "")),
+                        external_ticket_id=str(payload.get("external_ticket_id", "")),
+                    )
+                elif job_type == JOB_TYPE_NOTIFY_REPORTER:
+                    handle_notify_reporter(db, str(incident_id))
+                else:
+                    raise RuntimeError(f"unknown job type: {job_type}")
+    finally:
+        detach_trace_context(token)
 
 
 def schedule_sync_jobs() -> None:

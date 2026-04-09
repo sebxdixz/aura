@@ -1,79 +1,135 @@
-# AURA Quick Guide
+# QUICKGUIDE
 
-This guide is optimized for fast local validation and AI-first review.
+## Fastest path
 
-## 1. Prerequisites
+### 1. Clone and enter the repo
 
-- Docker + Docker Compose
-- API key for at least one provider:
-  - `OPENROUTER_API_KEY` (recommended), or
-  - `OPENAI_API_KEY`
+```bash
+git clone <your-repo-url>
+cd aura
+```
 
-## 2. Configure Environment
+### 2. Create `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Minimum values to set:
+**No external credentials are required for the default mock/demo path.**
 
-```env
-TENANT_ADMIN_KEY=hackathon2024
-OPENROUTER_API_KEY=sk-or-v1-...
-```
-
-Optional integration and mode controls are in `.env.example`.
-
-## 3. Start the Platform
+### 3. Start the stack
 
 ```bash
 docker compose up --build
 ```
 
-Main URL:
+### 4. Open these URLs
 
-- `http://localhost:3000/`
+- Main app: `http://localhost:3000`
+- Dashboard-only view: `http://localhost:3001`
+- Intake-only view: `http://localhost:3002/intake/demo`
+- API health: `http://localhost:8000/health`
 
-## 4. Core URLs
+## 2-minute smoke test
 
-- Welcome: `http://localhost:3000/`
-- Dashboard: `http://localhost:3000/dashboard`
-- Public Intake: `http://localhost:3000/intake/{tenant}`
-- Thanks page: `http://localhost:3000/thanks`
+### A. Create or use a tenant
 
-## 5. Smoke Test Checklist (Feature Validation)
+1. Open `http://localhost:3000`
+2. Register tenant `demo` if it does not exist
+3. Log in with:
+   - `tenant_id`: `demo`
+   - admin key: `change-me`
 
-1. Register a tenant from welcome page.
-2. Login with `tenant_id` + `TENANT_ADMIN_KEY`.
-3. Confirm dashboard loads tenant metrics and incidents.
-4. In settings, configure Jira and Slack credentials and run test buttons.
-5. In settings, run GitHub sync to index repository into tenant RAG.
-6. Open public intake URL `/intake/{tenant}`.
-7. Submit incident with text and optionally one file:
-   - image, pdf, audio, or log/text file
-8. Confirm incident appears in dashboard with triage fields.
-9. Confirm incident shows token usage and USD cost.
-10. Resolve incident and provide resolution notes.
-11. Confirm ticket/notification outputs in dashboard result log and provider systems (or mock responses).
+### B. Submit an incident
 
-## 6. What the Reviewer Should See
+Use either:
 
-- Login/register flow is active.
-- Multi-tenant separation is active.
-- Public intake and private dashboard are separated.
-- RAG is tenant-scoped and reports indexed chunk count.
-- GitHub indexing to vector DB works from dashboard settings.
-- Jira and Slack are configurable per tenant and testable.
-- UI supports ES/EN toggles.
+- `http://localhost:3000/dashboard` -> `Report Incident`
+- or `http://localhost:3002/intake/demo`
 
-## 7. Troubleshooting
+Submit:
 
-- Dashboard without data:
-  - Ensure valid login session (`tenant` + admin key).
-  - Hard refresh `/dashboard`.
-- Jira test returns issue type error:
-  - Set valid `issue_type` for the selected project.
-- Slack test does not post:
-  - Verify webhook/token/channel and that bot is invited to channel.
-- No external credentials available:
-  - Use mock/fallback mode for demo continuity.
+- a short incident description
+- an attachment such as:
+  - screenshot
+  - log
+  - text file
+
+### C. Validate the main flow
+
+Confirm that AURA:
+
+1. stores the incident immediately
+2. processes it asynchronously through the worker
+3. shows triage output with severity and explainability
+4. creates a mock or real ticket depending on config
+5. notifies the team
+6. can resolve the incident from the dashboard
+7. triggers reporter notification on resolution
+
+## Optional: enable Jaeger tracing
+
+Edit `.env`:
+
+```env
+OTEL_EXPORTER_MODE=otlp
+```
+
+Then restart:
+
+```bash
+docker compose up --build
+```
+
+Open:
+
+- Jaeger UI: `http://localhost:16686`
+
+Expected traces:
+
+- `api.submit_incident`
+- `worker.process_incident`
+- `rag.retrieve_context`
+- `ticket.create`
+- `notify.team`
+- `worker.sync_ticket_status`
+- `worker.notify_reporter`
+
+## Optional: enable real integrations
+
+### Jira
+
+```env
+MOCK_MODE=false
+TICKETING_PROVIDER=jira
+```
+
+Then fill Jira credentials in `.env` or through tenant settings.
+
+### Slack
+
+```env
+COMMUNICATOR_PROVIDER=slack
+```
+
+Then fill Slack credentials.
+
+### Reporter email
+
+```env
+EMAIL_PROVIDER=resend
+EMAIL_RESEND_API_KEY=re_...
+EMAIL_FROM=alerts@your-domain.com
+EMAIL_FROM_NAME=AURA
+```
+
+## Troubleshooting
+
+- Old containers from previous runs:
+  - `docker compose up --build --remove-orphans`
+- Main UI loads but data is missing:
+  - verify you are logged into the correct tenant
+- No real provider output:
+  - confirm you are not still using mock mode
+- No Jaeger traces:
+  - confirm `OTEL_EXPORTER_MODE=otlp`

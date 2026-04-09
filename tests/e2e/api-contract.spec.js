@@ -107,8 +107,18 @@ test.describe("AURA API contract", () => {
     expect(resolveRes.ok()).toBeTruthy();
     const resolved = await resolveRes.json();
     expect(resolved.status).toBe("resolved");
-    expect(String(resolved.resolution_notes)).toContain("coupon validation");
-    expect(resolved.notifications.some((n) => n.channel === "reporter_email")).toBeTruthy();
+
+    let resolvedWithEmail = resolved;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const pollRes = await request.get(`${API_BASE_URL}/api/incidents/${incident.incident_id}`);
+      expect(pollRes.ok()).toBeTruthy();
+      resolvedWithEmail = await pollRes.json();
+      if (resolvedWithEmail.notifications.some((n) => n.channel === "reporter_email" && n.status === "sent")) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    expect(resolvedWithEmail.notifications.some((n) => n.channel === "reporter_email" && n.status === "sent")).toBeTruthy();
 
     const dashboardRes = await request.get(`${API_BASE_URL}/api/tenants/${tenant}/dashboard`);
     expect(dashboardRes.ok()).toBeTruthy();

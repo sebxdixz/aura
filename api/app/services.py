@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 from . import repository as repo
 from .attachments import attachment_context_from_record
 from .guardrails import validate_tool_name
+from .integrations.email import (
+    ReporterEmailDeliveryError,
+    normalize_email_provider,
+    send_reporter_resolution_email,
+)
 from .integrations.jira import create_jira_ticket, test_jira_credentials
 from .integrations.llm import (
     generate_structured_entities,
@@ -41,6 +46,7 @@ from .rag import retrieve_code_context
 from .react_orchestrator import create_ticket_via_react, is_react_mcp_enabled, notify_team_via_react
 from .secrets import encrypt_text
 from .telemetry import start_span
+from .jobs import JOB_TYPE_NOTIFY_REPORTER, enqueue_job, has_pending_job
 from .triage_pipeline import (
     build_rag_query,
     extract_entities,
@@ -1013,17 +1019,72 @@ def notify_team(
         return event
 
 
-def notify_reporter(incident_id: str, reporter_email: str) -> NotificationRecord:
-    with start_span("notify.reporter", **{"incident.id": incident_id}):
+def notify_reporter(
+    incident_id: str,
+    reporter_email: str,
+    *,
+    incident: IncidentRecord | None = None,
+) -> NotificationRecord:
+    with start_span("notify.reporter", **{"incident.id": incident_id, "email.to": reporter_email}):
         validate_tool_name("notify_reporter")
-        provider = os.getenv("EMAIL_PROVIDER", "mock-email")
-        fallback_provider = os.getenv("EMAIL_FALLBACK_PROVIDER", "mock-ses")
+        provider = normalize_email_provider(os.getenv("EMAIL_PROVIDER", "mock-email"))
+        fallback_provider = normalize_email_provider(os.getenv("EMAIL_FALLBACK_PROVIDER", "mock-email"))
+        if incident is None:
+            raise ReporterEmailDeliveryError(provider, "notify_reporter requires an incident record.")
+        log_event(
+            "reporter_email_send_started",
+            incident_id=incident_id,
+            reporter_email=reporter_email,
+            provider=provider,
+        )
         try:
-            detail = _notify_reporter_with_provider(provider, reporter_email, fail_flag="FORCE_FAIL_PRIMARY_EMAIL")
-        except RuntimeError:
-            log_event("integration_fallback", incident_id=incident_id, integration="reporter_email", fallback_provider=fallback_provider)
-            detail = _notify_reporter_with_provider(fallback_provider, reporter_email, fail_flag="FORCE_FAIL_FALLBACK_EMAIL")
-        event = NotificationRecord(channel="reporter_email", status="sent", detail=detail)
+            event = send_reporter_resolution_email(
+                incident=incident,
+                reporter_email=reporter_email,
+                provider_name=provider,
+                fail_flag="FORCE_FAIL_PRIMARY_EMAIL",
+            )
+        except ReporterEmailDeliveryError as primary_exc:
+            if fallback_provider == provider:
+                log_event(
+                    "reporter_email_send_failed",
+                    incident_id=incident_id,
+                    reporter_email=reporter_email,
+                    provider=primary_exc.provider,
+                    error=primary_exc.message,
+                )
+                raise
+            log_event(
+                "integration_fallback",
+                incident_id=incident_id,
+                integration="reporter_email",
+                fallback_provider=fallback_provider,
+                provider=primary_exc.provider,
+            )
+            try:
+                event = send_reporter_resolution_email(
+                    incident=incident,
+                    reporter_email=reporter_email,
+                    provider_name=fallback_provider,
+                    fail_flag="FORCE_FAIL_FALLBACK_EMAIL",
+                )
+            except ReporterEmailDeliveryError as fallback_exc:
+                log_event(
+                    "reporter_email_send_failed",
+                    incident_id=incident_id,
+                    reporter_email=reporter_email,
+                    provider=fallback_exc.provider,
+                    error=fallback_exc.message,
+                )
+                raise
+        log_event(
+            "reporter_email_send_succeeded",
+            incident_id=incident_id,
+            reporter_email=reporter_email,
+            provider=event.provider,
+            status=event.status,
+            external_message_id=event.external_message_id,
+        )
         log_event("reporter_notified", incident_id=incident_id, reporter_email=reporter_email)
         return event
 
@@ -1083,16 +1144,16 @@ def find_duplicate_incident(db: Session, tenant_id: str, description: str) -> In
 
 
 def resolve_incident(db: Session, incident_id: str) -> IncidentRecord | None:
-    with start_span("notify.reporter", **{"incident.id": incident_id}):
+    with start_span("incident.resolve", **{"incident.id": incident_id}):
         record = repo.get_incident(db, incident_id)
         if not record:
             return None
 
-        reporter_event = notify_reporter(incident_id, str(record.reporter_email))
-        updated = repo.resolve_incident(db, incident_id, extra_notification=reporter_event)
+        updated = repo.mark_incident_resolved(db, incident_id)
         if updated:
             repo.write_audit_log(db, stage="incident_resolved", tenant_id=updated.tenant_id, incident_id=incident_id)
             log_event("incident_resolved", incident_id=incident_id)
+            enqueue_reporter_notification_job(db, updated)
 
             communicator = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
             if communicator == "slack":
@@ -1107,6 +1168,25 @@ def resolve_incident(db: Session, incident_id: str) -> IncidentRecord | None:
                 except RuntimeError as exc:
                     log_event("slack_resolved_skipped", incident_id=incident_id, error=str(exc))
         return updated
+
+
+def enqueue_reporter_notification_job(db: Session, incident: IncidentRecord) -> None:
+    if any(item.channel == "reporter_email" and item.status == "sent" for item in incident.notifications):
+        return
+    if has_pending_job(db, JOB_TYPE_NOTIFY_REPORTER, incident.incident_id):
+        return
+    enqueue_job(
+        db,
+        JOB_TYPE_NOTIFY_REPORTER,
+        {"incident_id": incident.incident_id},
+        incident_id=incident.incident_id,
+    )
+    log_event(
+        "reporter_resolution_notification_enqueued",
+        incident_id=incident.incident_id,
+        tenant_id=incident.tenant_id,
+        reporter_email=str(incident.reporter_email),
+    )
 
 
 def get_tenant(db: Session, tenant_id: str) -> TenantRecord | None:
@@ -1822,10 +1902,3 @@ def _notify_team_with_provider(provider: str, ticket: TicketRecord, triage: Tria
     return _with_retry(f"team_notify:{provider}", action)
 
 
-def _notify_reporter_with_provider(provider: str, reporter_email: str, fail_flag: str) -> str:
-    def action() -> str:
-        if _should_fail_once(fail_flag):
-            raise RuntimeError(f"{provider} temporary outage")
-        return f"Reporter {reporter_email} notified by {provider}."
-
-    return _with_retry(f"reporter_notify:{provider}", action)

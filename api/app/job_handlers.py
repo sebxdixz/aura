@@ -7,7 +7,6 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from .attachments import process_attachment
-from .jobs import JOB_TYPE_NOTIFY_REPORTER, enqueue_job
 from .models import IncidentLinkRecord, IncidentRecord, NotificationRecord, TicketRecord
 from .multi_ticket import analyze_multi_ticket_intelligence, to_link_records
 from .observability import log_event
@@ -17,6 +16,7 @@ from . import repository as repo
 from .integrations.slack import notify_slack_resolved
 from .services import (
     create_ticket,
+    enqueue_reporter_notification_job,
     find_duplicate_incident,
     get_incident,
     notify_reporter,
@@ -258,8 +258,9 @@ def handle_sync_ticket_status(db: Session, incident_id: str, provider: str, exte
                 payload={"provider": provider, "external_status": external_status},
             )
             log_event("external_resolution_detected", incident_id=incident_id, tenant_id=incident.tenant_id, ticket_id=external_ticket_id, ticket_provider=provider)
-            enqueue_job(db, JOB_TYPE_NOTIFY_REPORTER, {"incident_id": incident_id}, incident_id=incident_id)
-            log_event("reporter_resolution_notification_enqueued", incident_id=incident_id, tenant_id=incident.tenant_id, ticket_id=external_ticket_id)
+            refreshed = repo.get_incident(db, incident_id)
+            if refreshed:
+                enqueue_reporter_notification_job(db, refreshed)
         return updated
 
 
@@ -268,10 +269,41 @@ def handle_notify_reporter(db: Session, incident_id: str) -> IncidentRecord | No
         incident = get_incident(db, incident_id)
         if not incident:
             return None
-        if any(item.channel == "reporter_email" for item in incident.notifications):
-            return incident
+        if any(item.channel == "reporter_email" and item.status == "sent" for item in incident.notifications):
+            log_event(
+                "reporter_email_send_skipped_duplicate",
+                incident_id=incident_id,
+                reporter_email=str(incident.reporter_email),
+            )
+            skipped_event = NotificationRecord(
+                channel="reporter_email",
+                status="skipped",
+                provider=os.getenv("EMAIL_PROVIDER", "mock-email"),
+                detail="Skipped duplicate reporter resolution email; already sent successfully.",
+            )
+            return repo.append_incident_notification(db, incident_id, skipped_event)
 
-        event = notify_reporter(incident_id, str(incident.reporter_email))
+        try:
+            event = notify_reporter(incident_id, str(incident.reporter_email), incident=incident)
+        except Exception as exc:
+            provider = getattr(exc, "provider", os.getenv("EMAIL_PROVIDER", "mock-email"))
+            detail = getattr(exc, "message", str(exc))
+            failed_event = NotificationRecord(
+                channel="reporter_email",
+                status="failed",
+                provider=str(provider),
+                detail=detail,
+            )
+            repo.append_incident_notification(db, incident_id, failed_event)
+            log_event(
+                "reporter_email_send_failed",
+                incident_id=incident_id,
+                reporter_email=str(incident.reporter_email),
+                provider=str(provider),
+                error=detail,
+            )
+            raise
+
         updated = repo.append_incident_notification(db, incident_id, event)
         communicator = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
         if communicator == "slack" and updated:

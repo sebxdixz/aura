@@ -2,12 +2,11 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: aura-db
+    restart: on-failure
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aura}
       POSTGRES_USER: ${POSTGRES_USER:-aura}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - aura_pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -17,6 +16,14 @@ services:
       timeout: 5s
       retries: 5
 
+  # Optional trace UI. Safe to keep running even when OTEL_EXPORTER_MODE=console.
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: aura-jaeger
+    restart: on-failure
+    ports:
+      - "16686:16686"
+
   mcp_bridge:
     build:
       context: ./mcp-bridge
@@ -24,37 +31,11 @@ services:
     restart: on-failure
     env_file:
       - .env
-    environment:
-      MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
-      MCP_BRIDGE_TIMEOUT_MS: ${MCP_BRIDGE_TIMEOUT_MS:-35000}
-      JIRA_MCP_COMMAND: ${JIRA_MCP_COMMAND:-mcp-atlassian}
-      JIRA_MCP_ARGS: ${JIRA_MCP_ARGS:-}
-      JIRA_DEFAULT_ISSUE_TYPE: ${JIRA_DEFAULT_ISSUE_TYPE:-Bug}
-      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-AURA}
-      JIRA_URL: ${JIRA_URL:-}
-      JIRA_USERNAME: ${JIRA_USERNAME:-}
-      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
-      JIRA_PERSONAL_TOKEN: ${JIRA_PERSONAL_TOKEN:-}
-      CONFLUENCE_URL: ${CONFLUENCE_URL:-}
-      CONFLUENCE_USERNAME: ${CONFLUENCE_USERNAME:-}
-      CONFLUENCE_API_TOKEN: ${CONFLUENCE_API_TOKEN:-}
-      SLACK_MCP_COMMAND: ${SLACK_MCP_COMMAND:-npx}
-      SLACK_MCP_ARGS: ${SLACK_MCP_ARGS:--y @modelcontextprotocol/server-slack}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
-      SLACK_TEAM_ID: ${SLACK_TEAM_ID:-}
-      SLACK_DEFAULT_CHANNEL_ID: ${SLACK_DEFAULT_CHANNEL_ID:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  jaeger:
-    image: jaegertracing/all-in-one:1.62.0
-    container_name: aura-jaeger
-    ports:
-      - "16686:16686"
-      - "4318:4318"
 
   api:
     build:
@@ -64,28 +45,16 @@ services:
     env_file:
       - .env
     environment:
-      MOCK_MODE: ${MOCK_MODE:-true}
-      POSTGRES_DB: ${POSTGRES_DB:-aura}
-      POSTGRES_USER: ${POSTGRES_USER:-aura}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura}
-      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      ECOMMERCE_CODEBASE_PATH: ${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}
-      RAG_REPO_NAME: ${RAG_REPO_NAME:-ecommerce}
-      RAG_AUTO_INDEX: ${RAG_AUTO_INDEX:-true}
-      RAG_TOP_K: ${RAG_TOP_K:-4}
-      RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
-      MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
-      MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
-      ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
-      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-local-dev-secrets-key}
       DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
-      OTEL_EXPORTER_MODE: ${OTEL_EXPORTER_MODE:-console}
+      ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
+      ECOMMERCE_CODEBASE_PATH: ${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}
+      MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      OTEL_SERVICE_NAME: aura-api
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
-      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:rw
+      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:ro
       - ./runtime/attachments:${ATTACHMENTS_DIR:-/workspace/attachments}:rw
     depends_on:
       db:
@@ -94,36 +63,37 @@ services:
         condition: service_healthy
       jaeger:
         condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   worker:
     build:
       context: ./api
     container_name: aura-worker
     restart: on-failure
+    command: ["python", "-m", "app.worker"]
     env_file:
       - .env
     environment:
-      MOCK_MODE: ${MOCK_MODE:-true}
-      POSTGRES_DB: ${POSTGRES_DB:-aura}
-      POSTGRES_USER: ${POSTGRES_USER:-aura}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura}
-      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      ECOMMERCE_CODEBASE_PATH: ${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}
-      RAG_REPO_NAME: ${RAG_REPO_NAME:-ecommerce}
-      RAG_AUTO_INDEX: ${RAG_AUTO_INDEX:-false}
-      RAG_TOP_K: ${RAG_TOP_K:-4}
-      RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
-      MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
-      MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
-      ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
-      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-local-dev-secrets-key}
       DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
-      OTEL_EXPORTER_MODE: ${OTEL_EXPORTER_MODE:-console}
+      ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
+      ECOMMERCE_CODEBASE_PATH: ${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}
+      MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
-    command: ["python", "-m", "app.worker"]
+      OTEL_SERVICE_NAME: aura-worker
+      RAG_AUTO_INDEX: "false"
+      WORKER_NAME: ${WORKER_NAME:-aura-worker}
     volumes:
-      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:rw
+      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:ro
       - ./runtime/attachments:${ATTACHMENTS_DIR:-/workspace/attachments}:rw
     depends_on:
       db:
@@ -133,35 +103,44 @@ services:
       jaeger:
         condition: service_started
 
+  # Main UX: welcome, login/register, admin dashboard, and tenant intake routes.
   web:
     build:
       context: ./web
       dockerfile: Dockerfile.unified
     container_name: aura-web
+    restart: on-failure
     ports:
       - "${WEB_PORT:-3000}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
+  # Standalone dashboard surface used for focused admin demos.
   web_dashboard:
     build:
       context: ./web
       dockerfile: Dockerfile.dashboard
     container_name: aura-web-dashboard
+    restart: on-failure
     ports:
       - "${DASHBOARD_PORT:-3001}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
+  # Standalone public intake surface used for direct reporter demos.
   web_report:
     build:
       context: ./web
       dockerfile: Dockerfile.report
     container_name: aura-web-report
+    restart: on-failure
     ports:
       - "${UNIFIED_WEB_PORT:-3002}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   aura_pgdata:

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .observability import log_event
+from .telemetry import inject_trace_context
 
 JOB_TYPE_PROCESS_INCIDENT = "process_incident"
 JOB_TYPE_SYNC_TICKET_STATUS = "sync_ticket_status"
@@ -32,6 +33,8 @@ def enqueue_job(
     run_after: datetime | None = None,
     incident_id: str | None = None,
 ) -> int:
+    payload_to_store = dict(payload)
+    payload_to_store.setdefault("_trace_context", inject_trace_context())
     row = db.execute(
         text(
             """
@@ -42,7 +45,7 @@ def enqueue_job(
         ),
         {
             "job_type": job_type,
-            "payload": json.dumps(payload),
+            "payload": json.dumps(payload_to_store),
             "max_attempts": max_attempts,
             "run_after": run_after or _utc_now(),
         },

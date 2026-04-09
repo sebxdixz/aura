@@ -5,9 +5,12 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from opentelemetry import trace
+from opentelemetry import context as otel_context
+from opentelemetry import propagate
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor
 
 _CONFIGURED = False
@@ -51,7 +54,31 @@ def start_span(name: str, **attributes: Any) -> Iterator[Any]:
         for key, value in attributes.items():
             if value is not None:
                 span.set_attribute(key, value)
-        yield span
+        try:
+            yield span
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
+            raise
+
+
+def inject_trace_context(carrier: dict[str, str] | None = None) -> dict[str, str]:
+    target = dict(carrier or {})
+    propagate.inject(target)
+    return target
+
+
+def attach_trace_context(carrier: dict[str, str] | None) -> object | None:
+    if not carrier:
+        return None
+    extracted = propagate.extract(carrier)
+    return otel_context.attach(extracted)
+
+
+def detach_trace_context(token: object | None) -> None:
+    if token is None:
+        return
+    otel_context.detach(token)
 
 
 def current_trace_id() -> str | None:

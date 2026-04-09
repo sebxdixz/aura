@@ -1,148 +1,290 @@
 # AGENTS_USE
 
-## 1. Agent overview and tech stack
+## 1. Overview
 
-AURA is a multi-tenant SRE incident intake and triage platform for e-commerce operations.
-Stack:
+AURA is a **multimodal incident intake and triage system for e-commerce operations**.
+It accepts incident reports from a UI, analyzes them with deterministic extraction plus optional model-assisted reasoning, creates a ticket, notifies the technical team, and notifies the original reporter when the incident is resolved.
 
-- API: FastAPI (Python)
-- DB: PostgreSQL + pgvector
-- LLM orchestration: OpenRouter/OpenAI adapters
-- Tool execution: MCP bridge (Node.js) for Jira/Slack
-- Web: Single Nginx frontend with route split (`/`, `/dashboard`, `/intake/{tenant}`)
-- Runtime: Docker Compose
-- Validation: Playwright E2E
+The project is **production-minded but honestly hackathon-scoped**:
 
-Implemented platform features snapshot:
+- reproducible with `docker compose up --build`
+- mock-first by default
+- real Jira, Slack, and reporter email integrations available through configuration
+- async worker and resolution watcher included
+- OpenTelemetry + Jaeger path included for local trace visibility
 
-- Login/register
-- Multi-tenant isolation
-- Tenant-specific public intake URL
-- Tenant-scoped RAG
-- GitHub indexing to vector DB
-- Jira and Slack integrations
-- ES/EN UI language support
+## 2. Agent / decision layers
 
-## 2. Agents and their capabilities
+### Layer A: Multimodal intake and evidence extraction
 
-Agent 1 - Multimodal Ingestion Agent
+Responsibilities:
 
-- Accepts text and optional files (image, pdf, audio, logs)
-- Normalizes inputs into structured incident evidence
-- Produces extraction output for triage stage
+- accept incident text plus optional attachment
+- validate file type and size
+- persist the raw incident immediately
+- extract evidence from screenshots, logs, text, JSON, and PDFs
 
-Agent 2 - Analysis and Triage Agent
+Implementation notes:
 
-- Retrieves tenant-scoped code context from vector DB
-- Computes severity, technical summary, affected service, and fix proposal
-- Handles dedup and runbook suggestion logic
+- attachment handling is deterministic and auditable
+- screenshot OCR is best-effort
+- extracted evidence is stored on the incident record
 
-Agent 3 - ReAct Orchestrator Agent
+### Layer B: Triage and explainability
 
-- Plans tool actions for ticketing and notifications
-- Executes Jira/Slack actions through MCP bridge
-- Falls back to direct/mock providers on bridge/tool errors
+Responsibilities:
 
-## 3. Architecture, orchestration, and error handling
+- score severity
+- infer likely service and incident type
+- recommend routing target
+- generate summary, RCA hypothesis, and recommended investigation
+- expose explainability in a reviewer-friendly format
 
-Flow:
+Implementation notes:
 
-`submit -> ingest -> triage -> ticket -> notify team -> resolve -> notify reporter`
+- deterministic extraction runs first
+- optional model enrichment runs only when configured
+- fallback behavior remains deterministic and usable
 
-Service boundaries:
+### Layer C: Repo-grounded context (RAG)
 
-- `web`: welcome, intake, dashboard UI
-- `api`: business logic, RAG, agent pipeline, integration routing
-- `db`: incidents, tenant settings, audit logs, vector chunks
-- `mcp_bridge`: HTTP to MCP tool call adapter
+Responsibilities:
 
-Error handling:
+- index repository content into pgvector
+- retrieve relevant code/doc chunks during triage
+- expose repository evidence back into the incident result
 
-- Guardrails and validation return structured `4xx`
-- Integration failures trigger fallback path
-- MCP errors degrade to direct/mock integration path
-- Audit/telemetry failures do not block primary incident transaction
+Implementation notes:
 
-## 4. Context engineering approach
+- tenant-scoped retrieval
+- bounded top-k retrieval
+- designed to improve grounding, not replace deterministic triage
 
-- Context package includes:
-  - customer text input
-  - parsed file evidence
-  - tenant-scoped retrieved code chunks from pgvector
-- Two-stage prompting:
-  - Stage A: fast multimodal extraction
-  - Stage B: stronger reasoning model for final triage JSON
-- Tenant isolation:
-  - retrieval filters by `tenant_id`
-  - sync/index endpoints require tenant admin key
+### Layer D: Multi-ticket intelligence
 
-## 5. Use cases with step-by-step flows
+Responsibilities:
 
-Use case A - Customer reports incident
+- detect duplicates
+- link related incidents
+- compute recurrence windows
+- derive scope assessment
 
-1. Customer opens `/intake/{tenant}`.
-2. Customer submits text plus optional file evidence.
-3. AURA ingests, validates, and triages.
-4. AURA creates ticket and notifies team.
-5. Customer sees confirmation page.
+Implementation notes:
 
-Use case B - Operator manages incidents
+- this is used as context and operator support
+- it improves handoff quality and duplicate handling
+- it is intentionally visible in the UI instead of being hidden backend logic
 
-1. Operator logs in at `/dashboard`.
-2. Reviews incidents and triage details.
-3. Resolves incident with mandatory resolution notes.
-4. Reporter notification step is triggered.
+### Layer E: Ticketing and team notification
 
-Use case C - Tenant admin indexes codebase
+Responsibilities:
 
-1. Admin opens dashboard settings.
-2. Submits GitHub repository URL for sync.
-3. API indexes repository into tenant vector DB.
-4. Dashboard shows index status and chunk count.
+- create a ticket
+- notify the technical team
+- support mock and real provider paths
 
-## 6. Observability - logging, tracing, metrics (evidence)
+Implementation notes:
 
-Evidence endpoints:
+- direct/provider-first execution is available
+- optional MCP/ReAct path exists for tool-oriented execution
+- fallbacks are explicit rather than silent
 
-- `GET /metrics`
-- `GET /api/tenants/{tenant_id}/audit-logs`
-- `GET /api/tenants/{tenant_id}/insights/summary`
+### Layer F: Worker, watcher, and reporter notification
 
-Evidence in behavior:
+Responsibilities:
 
-- Incident lifecycle events are persisted with tenant and incident context.
-- Dashboard surfaces incident-level token usage and cost in USD.
+- process incidents asynchronously
+- monitor ticket status through polling
+- mark incidents resolved locally
+- enqueue reporter notification
+- send reporter email through mock or real provider
 
-Evidence in tests:
+Implementation notes:
 
-- `tests/e2e/api-contract.spec.js`
-- `tests/e2e/web-intake.spec.js`
+- worker uses a persisted job table
+- reporter notification is idempotent
+- resolution watcher is polling-first today
 
-## 7. Security and guardrails (evidence)
+## 3. Capabilities
 
-Evidence in code and runtime behavior:
+Implemented capabilities:
 
-- Input guardrails for malicious prompt patterns
-- File type and size controls for uploads
-- Strict tenant boundary by `tenant_id`
-- Admin endpoints protected by `x-tenant-admin-key`
-- Tool calls constrained by MCP bridge endpoint and allowed operations
+- UI-based incident intake
+- multimodal triage (`text + screenshot/log`)
+- repo-grounded context via RAG
+- ticket creation
+- team notification
+- reporter notification on resolution
+- async worker processing
+- polling-based resolution watcher
+- explainability in the UI
+- structured logging, metrics, and tracing
+- tenant-scoped integrations and RAG sync
 
-Evidence in tests:
+## 4. Architecture and orchestration
 
-- Prompt-injection rejection covered in API E2E tests
-- Tenant-isolated workflows validated in web/API E2E paths
+Core runtime services:
 
-## 8. Scalability summary
+- `web`
+  - welcome, login/register, dashboard, tenant intake routes
+- `web_dashboard`
+  - dashboard-only surface
+- `web_report`
+  - intake-only surface
+- `api`
+  - HTTP API and orchestration layer
+- `worker`
+  - async incident processing and watcher execution
+- `db`
+  - PostgreSQL + pgvector
+- `mcp_bridge`
+  - optional MCP execution bridge
+- `jaeger`
+  - optional local trace UI
 
-- Stateless API supports horizontal scaling.
-- PostgreSQL stores transactional and vector data with tenant filters.
-- Integration layer is decoupled from core incident flow.
-- Single frontend entrypoint with route split simplifies deployment and ops.
+Primary flow:
 
-## 9. Lessons learned and team reflections
+`submit -> persist -> enqueue -> worker triage -> ticket -> notify team -> watch resolution -> notify reporter`
 
-- Public intake and admin dashboard must be separated for safety and UX clarity.
-- Two-stage LLM design improves reliability compared to one-shot reasoning.
-- Tenant-scoped RAG is critical for useful triage in real e-commerce contexts.
-- Fallback and mock paths are required for stable demos under API constraints.
+Key orchestration choices:
+
+- submit is fast and non-blocking
+- heavy work is offloaded to the worker
+- watcher runs through the same job mechanism
+- reporter notification stays async and idempotent
+
+## 5. Context engineering
+
+The triage context package is intentionally layered:
+
+- user description
+- attachment-derived evidence
+- deterministic extracted signals
+- retrieved repository context
+- related incident context
+
+Why this matters:
+
+- keeps reasoning grounded
+- avoids over-reliance on a single LLM call
+- preserves useful behavior in mock or fallback mode
+
+Current model behavior is intentionally scoped:
+
+- deterministic extraction always runs
+- live model usage is optional
+- fallback mode is part of the design, not a hidden degraded path
+
+## 6. Use cases
+
+### Use case A: Customer reports an incident
+
+1. Customer opens `/intake/{tenant}` or the intake-only surface.
+2. Customer submits text plus screenshot or log.
+3. API validates and stores the incident.
+4. Worker performs multimodal triage and creates the ticket.
+5. Team notification is sent.
+
+### Use case B: Operator manages incidents
+
+1. Operator logs in from the main app or dashboard surface.
+2. Reviews severity, routing, explainability, and related incident context.
+3. Resolves an incident with resolution notes.
+4. Reporter notification is enqueued and sent asynchronously.
+
+### Use case C: Tenant admin configures context and integrations
+
+1. Admin configures tenant-specific Jira and Slack values.
+2. Admin syncs repository content into tenant-scoped RAG.
+3. Future incidents benefit from grounded context.
+
+## 7. Observability
+
+### What is implemented
+
+- structured lifecycle logs
+- metrics endpoint
+- audit logs endpoint
+- OpenTelemetry spans
+- optional Jaeger UI for local trace inspection
+
+### What can be observed today
+
+- incident submit
+- worker job claim and execution
+- triage
+- RAG retrieval
+- ticket creation
+- team notification
+- watcher sync
+- reporter email delivery
+
+### Evidence in the repo
+
+- metrics:
+  - [api/app/observability.py](./api/app/observability.py)
+- tracing:
+  - [api/app/telemetry.py](./api/app/telemetry.py)
+- worker spans:
+  - [api/app/worker.py](./api/app/worker.py)
+  - [api/app/job_handlers.py](./api/app/job_handlers.py)
+
+### Evidence to capture before submission
+
+- Jaeger screenshot showing one incident trace across API and worker
+- log sample containing `trace_id` and incident lifecycle stages
+- screenshot of `/metrics` or tenant insights output
+
+## 8. Security and guardrails
+
+### What is implemented
+
+- description validation
+- file allowlist and size guardrails
+- attachment sanitization
+- tenant-scoped isolation by `tenant_id`
+- admin-key protection for tenant admin endpoints
+- constrained tool execution paths
+
+### Evidence in the repo
+
+- guardrails:
+  - [api/app/guardrails.py](./api/app/guardrails.py)
+- tenant admin verification:
+  - [api/app/main.py](./api/app/main.py)
+- integration secret handling:
+  - [api/app/secrets.py](./api/app/secrets.py)
+
+### Evidence to capture before submission
+
+- screenshot or API sample of invalid admin key rejection
+- screenshot or API sample of rejected unsafe attachment/input
+- screenshot of tenant-scoped dashboard or incident list proving separation
+
+## 9. Scalability
+
+Current scalability wins:
+
+- stateless API
+- persisted job lifecycle
+- separate worker
+- tenant-scoped data model
+- bounded RAG retrieval
+- provider abstraction for integrations
+
+Current intentional limits:
+
+- database-backed queue instead of a dedicated broker
+- polling-first watcher instead of webhook-first
+- local Jaeger instead of a shared tracing backend
+
+These tradeoffs are documented in [SCALING.md](./SCALING.md).
+
+## 10. Lessons learned
+
+- incident intake should persist first and process later
+- multimodal evidence is only useful when surfaced back to the operator
+- fallback behavior should be explicit and testable
+- tenant-scoped RAG is more important than generic retrieval quality
+- observability matters more once async worker flow is introduced
+- hackathon systems benefit from mock-first defaults and honest real-mode extensions
