@@ -233,6 +233,7 @@ async def submit_incident(
     triage = run_triage(
         incident_id=incident_id,
         tenant_id=tenant_id,
+        reporter_email=reporter_email,
         description=description,
         has_file=has_file,
         attachment=attachment_record,

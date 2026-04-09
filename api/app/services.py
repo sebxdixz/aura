@@ -15,6 +15,7 @@ from .attachments import attachment_context_from_record
 from .guardrails import validate_tool_name
 from .integrations.jira import create_jira_ticket
 from .integrations.llm import (
+    generate_structured_entities,
     generate_model_triage,
     generate_two_stage_triage,
     is_model_enabled,
@@ -33,6 +34,17 @@ from .models import (
 from .observability import log_event
 from .rag import retrieve_code_context
 from .react_orchestrator import create_ticket_via_react, is_react_mcp_enabled, notify_team_via_react
+from .triage_pipeline import (
+    build_rag_query,
+    extract_entities,
+    infer_service as infer_service_from_pipeline,
+    merge_extracted_entities,
+    normalize_incident_input,
+    route_incident,
+    score_severity,
+    summarize_retrieved_context,
+    validate_triage_output,
+)
 
 FAIL_COUNTS: dict[str, int] = {}
 
@@ -119,6 +131,7 @@ def run_triage(
     tenant_id: str | None,
     description: str,
     has_file: bool,
+    reporter_email: str = "",
     attachment: AttachmentRecord | None = None,
     attachment_filename: str | None = None,
     attachment_content_type: str | None = None,
@@ -128,6 +141,14 @@ def run_triage(
     triage_started_at = time.perf_counter()
     trace_id = incident_id or f"triage-{uuid.uuid4().hex[:10]}"
     attachment_type = attachment.attachment_type if attachment else "none"
+    normalized_input = normalize_incident_input(
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        reporter_email=reporter_email,
+        description=description,
+        attachment=attachment,
+        trace_id=trace_id,
+    )
     log_event(
         "triage_started",
         incident_id=incident_id,
@@ -135,30 +156,112 @@ def run_triage(
         trace_id=trace_id,
         attachment_type=attachment_type,
         has_file=has_file,
+        reporter_type=normalized_input.reporter_type,
     )
-    severity_factors = _calculate_severity_factors(description=description, attachment=attachment)
-    severity, severity_score, severity_rationale = calculate_severity(
-        description=description,
-        has_file=has_file,
-        factors=severity_factors,
-    )
-    service = _infer_service_with_attachment(description, attachment)
     attachment_context = attachment_context_from_record(attachment)
+    entities = extract_entities(normalized_input)
     log_event(
         "attachment_context_built",
         incident_id=incident_id,
         tenant_id=tenant_id,
         trace_id=trace_id,
         attachment_type=attachment_type,
-        service=service,
         attachment_used=bool(attachment and attachment.attachment_used),
+        attachment_signal_count=len(attachment_context.get("evidence", []) or []),
+    )
+    log_event(
+        "llm_entity_extraction_attempted",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        trace_id=trace_id,
+        attachment_type=attachment_type,
+        model_enabled=is_model_enabled() or is_two_stage_openrouter_enabled(),
+    )
+    entity_llm_payload = generate_structured_entities(
+        description=description,
+        attachment_context=attachment_context,
+    )
+    entities, entity_llm_changed = merge_extracted_entities(entities, entity_llm_payload)
+    log_event(
+        "llm_entity_extraction_succeeded" if entity_llm_payload else "llm_entity_extraction_failed",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        trace_id=trace_id,
+        attachment_type=attachment_type,
+        incident_type=entities.incident_type,
+        affected_surface=entities.affected_surface,
+        observed_error=entities.observed_error,
+        enrichment_applied=entity_llm_changed,
+    )
+    log_event(
+        "entities_extracted",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        trace_id=trace_id,
+        attachment_type=attachment_type,
+        incident_type=entities.incident_type,
+        affected_surface=entities.affected_surface,
+        observed_error=entities.observed_error,
+        user_scope=entities.user_scope,
+        reporter_type=normalized_input.reporter_type,
     )
     attachment_text = str(attachment_context.get("extracted_text", ""))
+    rag_query = build_rag_query(normalized_input, entities)
+    log_event(
+        "rag_query_built",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        trace_id=trace_id,
+        attachment_type=attachment_type,
+        incident_type=entities.incident_type,
+        query_length=len(rag_query),
+    )
+    code_context: list[dict[str, object]] = []
+    rag_started_at = time.perf_counter()
+    if db is not None:
+        try:
+            code_context = retrieve_code_context(db, tenant_id=tenant_id, query_text=rag_query)
+        except Exception:
+            code_context = []
+    rag_duration_ms = round((time.perf_counter() - rag_started_at) * 1000, 2)
 
+    retrieved_context = summarize_retrieved_context(rag_query, code_context)
+    context_paths = list(retrieved_context.retrieved_paths)
+    retrieval_empty = retrieved_context.retrieval_empty
+    description_signals = _description_signals(description)
+    rag_evidence = _rag_evidence(code_context)
+    service, secondary_candidates = infer_service_from_pipeline(
+        normalized=normalized_input,
+        entities=entities,
+        retrieved_context=retrieved_context,
+    )
+    severity_assessment = score_severity(
+        normalized=normalized_input,
+        entities=entities,
+        retrieved_context=retrieved_context,
+        primary_service=service,
+    )
+    severity = severity_assessment.label
+    severity_score = severity_assessment.score
+    severity_rationale = severity_assessment.rationale
+    severity_reasoning = severity_assessment.reasoning
     attachment_adjustment, attachment_reasons = _attachment_score_adjustment(attachment)
     if attachment_adjustment:
         severity_score = max(0, min(100, severity_score + attachment_adjustment))
         severity = _severity_from_score(severity_score)
+        severity_reasoning = (
+            f"{severity_reasoning} Attachment heuristics added {attachment_adjustment} points via "
+            f"{', '.join(attachment_reasons)}."
+        )
+    description_score = min(60, _description_score(description))
+    criticality_score = min(25, severity_assessment.impact_score + severity_assessment.component_score // 2)
+    routing = route_incident(
+        primary_service=service,
+        secondary_candidates=secondary_candidates,
+        entities=entities,
+        normalized=normalized_input,
+        retrieved_context=retrieved_context,
+    )
     log_event(
         "attachment_score_adjusted",
         incident_id=incident_id,
@@ -171,23 +274,6 @@ def run_triage(
         adjustment=attachment_adjustment,
         adjustment_reasons=attachment_reasons,
     )
-
-    rag_query = f"{description}\n{attachment_text}".strip()
-    code_context: list[dict[str, object]] = []
-    rag_started_at = time.perf_counter()
-    if db is not None:
-        try:
-            code_context = retrieve_code_context(db, tenant_id=tenant_id, query_text=rag_query)
-        except Exception:
-            code_context = []
-    rag_duration_ms = round((time.perf_counter() - rag_started_at) * 1000, 2)
-
-    context_paths: list[str] = []
-    for item in code_context:
-        candidate = str(item.get("file_path", "")).strip()
-        if candidate and candidate not in context_paths:
-            context_paths.append(candidate)
-    retrieval_empty = len(code_context) == 0
     log_event(
         "rag_context_retrieved",
         incident_id=incident_id,
@@ -201,6 +287,34 @@ def run_triage(
         rag_duration_ms=rag_duration_ms,
         retrieval_empty=retrieval_empty,
     )
+    log_event(
+        "severity_scored",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        trace_id=trace_id,
+        attachment_type=attachment_type,
+        severity=severity,
+        severity_score=severity_score,
+        service=service,
+        impact_score=severity_assessment.impact_score,
+        scope_score=severity_assessment.scope_score,
+        reporter_score=severity_assessment.reporter_score,
+        error_code_score=severity_assessment.error_code_score,
+        component_score=severity_assessment.component_score,
+    )
+    log_event(
+        "routing_decided",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        trace_id=trace_id,
+        attachment_type=attachment_type,
+        severity=severity,
+        severity_score=severity_score,
+        service=service,
+        target_team=routing.target_team,
+        routing_confidence=routing.routing_confidence,
+        rag_context_count=len(code_context),
+    )
 
     context_hint = f" Related code/docs: {', '.join(context_paths[:3])}." if context_paths else ""
     attachment_summary = str(attachment_context.get("summary", "")).strip()
@@ -208,7 +322,7 @@ def run_triage(
     used_attachment_signals = _used_attachment_signals(attachment)
     file_hint = attachment_summary if has_file and attachment_summary else "No attachment provided."
     technical_summary = (
-        f"Likely issue detected on {service}. "
+        f"Likely {entities.incident_type.replace('_', ' ')} affecting {entities.affected_surface} on {service}. "
         f"Initial severity is {severity}. "
         f"{file_hint}"
         f"{context_hint}"
@@ -217,16 +331,44 @@ def run_triage(
     if attachment_evidence:
         triage_summary = f"{technical_summary} Attachment evidence: {' '.join(attachment_evidence[:3])}"
 
-    root_cause_analysis = _infer_rca(description=description, service=service, severity=severity)
-    proposed_fix = _infer_fix(service=service)
-    proposed_cli_command = _infer_cli(service=service)
-    severity_reasoning = severity_rationale
-    if attachment_reasons:
-        severity_reasoning = (
-            f"{severity_rationale} Attachment evidence increased confidence via "
-            f"{', '.join(attachment_reasons)}."
-        )
-    routing_reasoning = _build_routing_reasoning(description=description, service=service, attachment=attachment, context_paths=context_paths)
+    scope_assessment = _scope_assessment(entities.user_scope)
+    severity_reasoning = _build_severity_reasoning(
+        severity=severity,
+        severity_score=severity_score,
+        service=service,
+        entities=entities,
+        severity_assessment=severity_assessment,
+        attachment_adjustment=attachment_adjustment,
+        attachment_reasons=attachment_reasons,
+        scope_assessment=scope_assessment,
+    )
+    root_cause_analysis = _infer_rca(
+        description=description,
+        service=service,
+        severity=severity,
+        incident_type=entities.incident_type,
+        observed_error=entities.observed_error,
+    )
+    proposed_fix = _infer_fix(
+        service=service,
+        incident_type=entities.incident_type,
+        observed_error=entities.observed_error,
+        target_team=routing.target_team,
+    )
+    proposed_cli_command = _infer_cli(
+        service=service,
+        incident_type=entities.incident_type,
+        observed_error=entities.observed_error,
+    )
+    routing_reasoning = _build_routing_reasoning(
+        description=description,
+        service=service,
+        attachment=attachment,
+        context_paths=context_paths,
+        target_team=routing.target_team,
+        affected_surface=entities.affected_surface,
+        observed_error=entities.observed_error,
+    )
     attachment_influence_reasoning = _attachment_influence_reasoning(attachment=attachment, adjustment=attachment_adjustment, service=service)
     context_adherence_score = _context_adherence_score(
         description=description,
@@ -237,26 +379,49 @@ def run_triage(
     live_llm_enabled = is_model_enabled() or is_two_stage_openrouter_enabled()
     fallback_mode = "multimodal_live_fallback" if live_llm_enabled else "mock_multimodal"
     fallback_used = not live_llm_enabled
+    severity_confidence = _severity_confidence(severity_assessment=severity_assessment, context_paths=context_paths, attachment=attachment)
+    root_cause_confidence = _root_cause_confidence(service=service, observed_error=entities.observed_error, context_paths=context_paths, attachment=attachment)
     fallback = TriageOutput(
         severity=severity,  # type: ignore[arg-type]
         affected_service=service,
+        incident_type=entities.incident_type,
+        affected_surface=entities.affected_surface,
+        observed_error=entities.observed_error,
+        user_scope=entities.user_scope,
+        scope_assessment=scope_assessment,
+        target_team=routing.target_team,
+        routing_confidence=routing.routing_confidence,
+        secondary_service_candidates=secondary_candidates[:3],
         technical_summary=technical_summary,
         triage_summary=triage_summary,
         retrieved_context_paths=context_paths[:5],
+        rag_evidence=rag_evidence,
         used_attachment_signals=used_attachment_signals,
+        description_signals=description_signals,
         relevant_files=context_paths[:3] or ["app/checkout.py" if service == "checkout-service" else "app/main.py"],
         severity_score=severity_score,
-        impact_score=int(severity_factors["impact_score"]),
-        scope_score=int(severity_factors["scope_score"]),
-        reporter_score=int(severity_factors["reporter_score"]),
-        error_code_score=int(severity_factors["error_code_score"]),
-        component_score=int(severity_factors["component_score"]),
+        description_score=description_score,
+        attachment_score=attachment_adjustment,
+        criticality_score=criticality_score,
+        impact_score=severity_assessment.impact_score,
+        scope_score=severity_assessment.scope_score,
+        reporter_score=severity_assessment.reporter_score,
+        error_code_score=severity_assessment.error_code_score,
+        component_score=severity_assessment.component_score,
         severity_rationale=severity_rationale,
         severity_reasoning=severity_reasoning,
         routing_reasoning=routing_reasoning,
-        workaround_present=bool(severity_factors["workaround_present"]),
-        security_risk=bool(severity_factors["security_risk"]),
-        runbook_suggestions=_runbook_suggestions(service=service, severity=severity),
+        workaround_present=severity_assessment.workaround_present,
+        security_risk=severity_assessment.security_risk,
+        business_impact_signals=entities.business_impact_signals,
+        security_risk_signals=entities.security_risk_signals,
+        urgency_signals=entities.urgency_signals,
+        runbook_suggestions=_runbook_suggestions(
+            service=service,
+            severity=severity,
+            incident_type=entities.incident_type,
+            observed_error=entities.observed_error,
+        ),
         is_duplicate=False,
         duplicate_of_incident_id=None,
         dedup_confidence=None,
@@ -277,11 +442,16 @@ def run_triage(
             fallback_used=fallback_used,
             llm_used=False,
         ),
+        severity_confidence=severity_confidence,
+        root_cause_confidence=root_cause_confidence,
         context_adherence_score=context_adherence_score,
         llm_used=False,
+        live_llm_used=False,
         fallback_used=fallback_used,
         retrieval_empty=retrieval_empty,
+        triage_mode=_triage_mode(live_llm_enabled=live_llm_enabled, fallback_used=fallback_used),
     )
+    fallback = validate_triage_output(fallback)
 
     if attachment and attachment.attachment_used:
         log_event(
@@ -322,11 +492,14 @@ def run_triage(
         parsed = _triage_from_model(two_stage_output, fallback=fallback)
         if parsed is not None:
             parsed.llm_used = True
+            parsed.live_llm_used = True
             parsed.fallback_used = False
             parsed.retrieval_empty = retrieval_empty
             parsed.context_adherence_score = max(parsed.context_adherence_score, context_adherence_score)
             parsed.retrieved_context_paths = parsed.retrieved_context_paths or context_paths[:5]
+            parsed.rag_evidence = parsed.rag_evidence or rag_evidence
             parsed.used_attachment_signals = parsed.used_attachment_signals or used_attachment_signals
+            parsed.description_signals = parsed.description_signals or description_signals
             parsed.confidence = _triage_confidence(
                 attachment=attachment,
                 context_paths=context_paths,
@@ -334,6 +507,10 @@ def run_triage(
                 fallback_used=False,
                 llm_used=True,
             )
+            parsed.severity_confidence = max(parsed.severity_confidence, severity_confidence)
+            parsed.root_cause_confidence = max(parsed.root_cause_confidence, root_cause_confidence)
+            parsed.triage_mode = _triage_mode(live_llm_enabled=True, fallback_used=False)
+            parsed = validate_triage_output(parsed)
             total_duration_ms = round((time.perf_counter() - triage_started_at) * 1000, 2)
             log_event(
                 "two_stage_triage_succeeded",
@@ -430,11 +607,14 @@ def run_triage(
         )
 
     parsed.llm_used = True
+    parsed.live_llm_used = True
     parsed.fallback_used = False
     parsed.retrieval_empty = retrieval_empty
     parsed.context_adherence_score = max(parsed.context_adherence_score, context_adherence_score)
     parsed.retrieved_context_paths = parsed.retrieved_context_paths or context_paths[:5]
+    parsed.rag_evidence = parsed.rag_evidence or rag_evidence
     parsed.used_attachment_signals = parsed.used_attachment_signals or used_attachment_signals
+    parsed.description_signals = parsed.description_signals or description_signals
     parsed.confidence = _triage_confidence(
         attachment=attachment,
         context_paths=context_paths,
@@ -442,6 +622,10 @@ def run_triage(
         fallback_used=False,
         llm_used=True,
     )
+    parsed.severity_confidence = max(parsed.severity_confidence, severity_confidence)
+    parsed.root_cause_confidence = max(parsed.root_cause_confidence, root_cause_confidence)
+    parsed.triage_mode = _triage_mode(live_llm_enabled=True, fallback_used=False)
+    parsed = validate_triage_output(parsed)
     total_duration_ms = round((time.perf_counter() - triage_started_at) * 1000, 2)
     log_event(
         "model_triage_succeeded",
@@ -487,12 +671,33 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
     try:
         severity = _coerce_severity(payload.get("severity"), fallback.severity)
         affected_service = _coerce_text(payload.get("affected_service"), fallback.affected_service)
+        incident_type = _coerce_text(payload.get("incident_type"), fallback.incident_type)
+        affected_surface = _coerce_text(payload.get("affected_surface"), fallback.affected_surface)
+        observed_error = _coerce_text(payload.get("observed_error"), fallback.observed_error)
+        user_scope = _coerce_text(payload.get("user_scope"), fallback.user_scope)
+        scope_assessment = _coerce_text(payload.get("scope_assessment"), fallback.scope_assessment)
+        target_team = _coerce_text(payload.get("target_team"), fallback.target_team)
+        routing_confidence = _coerce_float(
+            payload.get("routing_confidence"),
+            fallback.routing_confidence,
+            minimum=0.0,
+            maximum=1.0,
+        )
+        secondary_service_candidates = _coerce_string_list(
+            payload.get("secondary_service_candidates"),
+            fallback.secondary_service_candidates,
+        )
         technical_summary = _coerce_text(payload.get("technical_summary"), fallback.technical_summary)
         triage_summary = _coerce_text(payload.get("triage_summary"), fallback.triage_summary or fallback.technical_summary)
         retrieved_context_paths = _coerce_string_list(payload.get("retrieved_context_paths"), fallback.retrieved_context_paths)
+        rag_evidence = _coerce_string_list(payload.get("rag_evidence"), fallback.rag_evidence)
         used_attachment_signals = _coerce_string_list(payload.get("used_attachment_signals"), fallback.used_attachment_signals)
+        description_signals = _coerce_string_list(payload.get("description_signals"), fallback.description_signals)
         relevant_files = _coerce_string_list(payload.get("relevant_files"), fallback.relevant_files)
         severity_score = _coerce_int(payload.get("severity_score"), fallback.severity_score, minimum=0, maximum=100)
+        description_score = _coerce_int(payload.get("description_score"), fallback.description_score, minimum=0, maximum=100)
+        attachment_score = _coerce_int(payload.get("attachment_score"), fallback.attachment_score, minimum=0, maximum=100)
+        criticality_score = _coerce_int(payload.get("criticality_score"), fallback.criticality_score, minimum=0, maximum=100)
         impact_score = _coerce_int(payload.get("impact_score"), fallback.impact_score, minimum=0, maximum=30)
         scope_score = _coerce_int(payload.get("scope_score"), fallback.scope_score, minimum=0, maximum=20)
         reporter_score = _coerce_int(payload.get("reporter_score"), fallback.reporter_score, minimum=0, maximum=10)
@@ -503,6 +708,15 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
         routing_reasoning = _coerce_text(payload.get("routing_reasoning"), fallback.routing_reasoning)
         workaround_present = _coerce_bool(payload.get("workaround_present"), fallback.workaround_present)
         security_risk = _coerce_bool(payload.get("security_risk"), fallback.security_risk)
+        business_impact_signals = _coerce_string_list(
+            payload.get("business_impact_signals"),
+            fallback.business_impact_signals,
+        )
+        security_risk_signals = _coerce_string_list(
+            payload.get("security_risk_signals"),
+            fallback.security_risk_signals,
+        )
+        urgency_signals = _coerce_string_list(payload.get("urgency_signals"), fallback.urgency_signals)
         runbook_suggestions = _coerce_string_list(payload.get("runbook_suggestions"), fallback.runbook_suggestions)
         root_cause_analysis = _coerce_text(payload.get("root_cause_analysis"), fallback.root_cause_analysis)
         proposed_fix = _coerce_text(payload.get("proposed_fix"), fallback.proposed_fix)
@@ -513,15 +727,41 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
             fallback.attachment_influence_reasoning,
         )
         confidence = _coerce_float(payload.get("confidence"), fallback.confidence, minimum=0.0, maximum=1.0)
+        severity_confidence = _coerce_float(
+            payload.get("severity_confidence"),
+            fallback.severity_confidence,
+            minimum=0.0,
+            maximum=1.0,
+        )
+        root_cause_confidence = _coerce_float(
+            payload.get("root_cause_confidence"),
+            fallback.root_cause_confidence,
+            minimum=0.0,
+            maximum=1.0,
+        )
+        triage_mode = _coerce_text(payload.get("triage_mode"), fallback.triage_mode)
         return TriageOutput(
             severity=severity,  # type: ignore[arg-type]
             affected_service=affected_service,
+            incident_type=incident_type,
+            affected_surface=affected_surface,
+            observed_error=observed_error,
+            user_scope=user_scope,
+            scope_assessment=scope_assessment,
+            target_team=target_team,
+            routing_confidence=routing_confidence,
+            secondary_service_candidates=secondary_service_candidates,
             technical_summary=technical_summary,
             triage_summary=triage_summary,
             retrieved_context_paths=retrieved_context_paths,
+            rag_evidence=rag_evidence,
             used_attachment_signals=used_attachment_signals,
+            description_signals=description_signals,
             relevant_files=relevant_files,
             severity_score=severity_score,
+            description_score=description_score,
+            attachment_score=attachment_score,
+            criticality_score=criticality_score,
             impact_score=impact_score,
             scope_score=scope_score,
             reporter_score=reporter_score,
@@ -532,6 +772,9 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
             routing_reasoning=routing_reasoning,
             workaround_present=workaround_present,
             security_risk=security_risk,
+            business_impact_signals=business_impact_signals,
+            security_risk_signals=security_risk_signals,
+            urgency_signals=urgency_signals,
             runbook_suggestions=runbook_suggestions,
             is_duplicate=False,
             duplicate_of_incident_id=None,
@@ -547,6 +790,8 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
             attachment_summary=fallback.attachment_summary,
             attachment_influence_reasoning=attachment_influence_reasoning,
             confidence=confidence,
+            severity_confidence=severity_confidence,
+            root_cause_confidence=root_cause_confidence,
             context_adherence_score=_coerce_float(
                 payload.get("context_adherence_score"),
                 fallback.context_adherence_score,
@@ -554,8 +799,10 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
                 maximum=1.0,
             ),
             llm_used=_coerce_bool(payload.get("llm_used"), True),
+            live_llm_used=_coerce_bool(payload.get("live_llm_used"), True),
             fallback_used=_coerce_bool(payload.get("fallback_used"), False),
             retrieval_empty=_coerce_bool(payload.get("retrieval_empty"), fallback.retrieval_empty),
+            triage_mode=triage_mode,
         )
     except Exception:
         return None
@@ -801,12 +1048,18 @@ def tenant_dashboard(db: Session, tenant_id: str) -> TenantDashboard:
     return repo.tenant_dashboard(db, tenant_id)
 
 
-def _infer_rca(description: str, service: str, severity: str) -> str:
+def _infer_rca(description: str, service: str, severity: str, incident_type: str = "unknown", observed_error: str = "unknown") -> str:
     text = description.lower()
+    if incident_type == "payment_failure" or service == "payment-service":
+        if observed_error in {"http_500", "timeout"}:
+            return "Payment gateway or checkout-to-payment dependency likely failed and surfaced a server-side 5xx/timeout."
+        return "Payment workflow dependency likely failed within the revenue path."
     if service == "checkout-service":
         if "coupon" in text:
             return "Coupon validation path likely causing unhandled exception in checkout flow."
-        return "Payment workflow dependency likely failing and surfacing a 5xx error."
+        if observed_error in {"http_500", "timeout"}:
+            return "Checkout backend likely failed while calling a downstream payment or order dependency."
+        return "Checkout backend likely failed in a server-side path affecting conversion."
     if service == "auth-service":
         return "Authentication/session token validation may be rejecting valid user states."
     if service == "catalog-service":
@@ -816,9 +1069,13 @@ def _infer_rca(description: str, service: str, severity: str) -> str:
     return "Issue appears localized and may come from input validation or UI/backend contract mismatch."
 
 
-def _infer_fix(service: str) -> str:
+def _infer_fix(service: str, incident_type: str = "unknown", observed_error: str = "unknown", target_team: str = "") -> str:
+    if incident_type == "payment_failure" or service == "payment-service":
+        return "Inspect payment gateway health, checkout-to-payment retries/timeouts, and recent dependency failures before shipping a fix."
+    if observed_error in {"http_500", "timeout"} and target_team in {"Platform/SRE", "Checkout Backend"}:
+        return "Inspect 5xx logs, dependency timeout budgets, and recent deploy/config changes in the affected backend path."
     if service == "checkout-service":
-        return "Add defensive null checks around coupon parsing and return controlled 4xx for invalid coupon payloads."
+        return "Inspect checkout backend handlers, validate downstream dependency failures, and add controlled error handling for failing server-side paths."
     if service == "auth-service":
         return "Harden token validation and add explicit handling for expired/invalid refresh token branches."
     if service == "catalog-service":
@@ -826,7 +1083,11 @@ def _infer_fix(service: str) -> str:
     return "Add stricter request validation and structured exception handling in entrypoint handler."
 
 
-def _infer_cli(service: str) -> str:
+def _infer_cli(service: str, incident_type: str = "unknown", observed_error: str = "unknown") -> str:
+    if incident_type == "payment_failure" or service == "payment-service":
+        return "pytest tests/test_payment.py -k gateway or pytest tests/test_checkout.py -k payment"
+    if observed_error in {"http_500", "timeout"} and service == "checkout-service":
+        return "pytest tests/test_checkout.py -k timeout or pytest tests/test_checkout.py -k 500"
     if service == "checkout-service":
         return "pytest tests/test_checkout.py -k coupon"
     if service == "auth-service":
@@ -836,16 +1097,23 @@ def _infer_cli(service: str) -> str:
     return "pytest -k incident_hotfix"
 
 
-def _runbook_suggestions(service: str, severity: str) -> list[str]:
+def _runbook_suggestions(service: str, severity: str, incident_type: str = "unknown", observed_error: str = "unknown") -> list[str]:
     base = [
         "Confirm incident scope and affected tenant/user cohort.",
         "Validate recent deployments/config changes in the affected service.",
     ]
-    if service == "checkout-service":
+    if incident_type == "payment_failure" or service == "payment-service":
         base.extend(
             [
-                "Check payment gateway connectivity and error rate.",
-                "Verify coupon parsing/validation branch for null/invalid payload handling.",
+                "Inspect payment gateway health, timeout rates, and downstream dependency errors.",
+                "Validate retry/fallback behavior on checkout to payment calls.",
+            ]
+        )
+    elif service == "checkout-service":
+        base.extend(
+            [
+                "Inspect checkout-service 5xx logs and recent deploys.",
+                "Validate downstream order/payment dependency behavior from checkout handlers.",
             ]
         )
     elif service == "auth-service":
@@ -947,13 +1215,141 @@ def _build_routing_reasoning(
     service: str,
     attachment: AttachmentRecord | None,
     context_paths: list[str],
+    target_team: str = "",
+    affected_surface: str = "",
+    observed_error: str = "",
 ) -> str:
     parts = [f"Report text routed the incident to {service}."]
+    if target_team:
+        parts.append(f"Destination team is {target_team}.")
+    if affected_surface:
+        parts.append(f"Affected surface is {affected_surface}.")
+    if observed_error in {"http_500", "timeout", "payment_declined"}:
+        parts.append(f"Observed error {observed_error} suggests a backend or dependency path, not a purely visual issue.")
     if attachment and attachment.attachment_signals.get("suspected_service_from_attachment"):
         parts.append(f"Attachment signals corroborated {service}.")
     if context_paths:
         parts.append(f"RAG matched {', '.join(context_paths[:2])}.")
     return " ".join(parts)
+
+
+def _description_signals(description: str) -> list[str]:
+    lowered = description.lower()
+    ordered = [
+        "checkout",
+        "payment failed",
+        "500",
+        "timeout",
+        "login",
+        "auth",
+        "catalog",
+        "order",
+        "production",
+        "critical",
+    ]
+    return [token for token in ordered if token in lowered]
+
+
+def _description_score(description: str) -> int:
+    lowered = description.lower()
+    score = 0
+    for token, weight in {
+        "checkout": 12,
+        "payment": 14,
+        "payment failed": 16,
+        "500": 12,
+        "timeout": 12,
+        "login": 10,
+        "auth": 9,
+        "critical": 8,
+        "production": 6,
+    }.items():
+        if token in lowered:
+            score += weight
+    return min(score, 60)
+
+
+def _rag_evidence(code_context: list[dict[str, object]]) -> list[str]:
+    evidence: list[str] = []
+    for item in code_context[:4]:
+        file_path = str(item.get("file_path", "")).strip()
+        snippet = " ".join(str(item.get("content", "")).split())
+        if file_path and snippet:
+            evidence.append(f"{file_path}: {snippet[:90]}")
+        elif file_path:
+            evidence.append(file_path)
+    return evidence
+
+
+def _scope_assessment(user_scope: str) -> str:
+    mapping = {
+        "global": "Global impact indicated by the report or evidence.",
+        "many_users": "Multi-user impact is likely based on the available evidence.",
+        "small_subset": "A limited cohort appears affected.",
+        "single_user_report": "Only a single report is confirmed so far.",
+        "critical_flow_unconfirmed_scope": "Impact scope is unconfirmed, but the incident touches a critical business flow.",
+        "unknown": "Impact scope is still unconfirmed.",
+    }
+    return mapping.get(user_scope, "Impact scope is still unconfirmed.")
+
+
+def _build_severity_reasoning(
+    *,
+    severity: str,
+    severity_score: int,
+    service: str,
+    entities,
+    severity_assessment,
+    attachment_adjustment: int,
+    attachment_reasons: list[str],
+    scope_assessment: str,
+) -> str:
+    parts = [
+        f"Severity {severity} ({severity_score}/100) for {service}.",
+        f"Critical flow impact contributed {severity_assessment.impact_score} points.",
+        f"Error class contributed {severity_assessment.error_code_score} points via {entities.observed_error}.",
+        f"Scope contributed {severity_assessment.scope_score} points.",
+        scope_assessment,
+    ]
+    if not severity_assessment.workaround_present:
+        parts.append("No workaround was detected.")
+    if attachment_adjustment > 0:
+        parts.append(f"Attachment evidence added {attachment_adjustment} points ({', '.join(attachment_reasons)}).")
+    return " ".join(parts)
+
+
+def _severity_confidence(*, severity_assessment, context_paths: list[str], attachment: AttachmentRecord | None) -> float:
+    value = 0.48
+    if severity_assessment.error_code_score >= 10:
+        value += 0.12
+    if severity_assessment.impact_score >= 18:
+        value += 0.12
+    if context_paths:
+        value += min(0.12, 0.04 * len(context_paths))
+    if attachment and attachment.attachment_used:
+        value += 0.08
+    return round(min(value, 0.95), 2)
+
+
+def _root_cause_confidence(*, service: str, observed_error: str, context_paths: list[str], attachment: AttachmentRecord | None) -> float:
+    value = 0.38
+    if observed_error in {"http_500", "timeout", "payment_declined"}:
+        value += 0.14
+    if service in {"payment-service", "checkout-service", "auth-service"}:
+        value += 0.08
+    if context_paths:
+        value += min(0.14, 0.05 * len(context_paths))
+    if attachment and attachment.attachment_used:
+        value += 0.06
+    return round(min(value, 0.9), 2)
+
+
+def _triage_mode(*, live_llm_enabled: bool, fallback_used: bool) -> str:
+    if live_llm_enabled and not fallback_used:
+        return "live_llm + deterministic guardrails"
+    if live_llm_enabled and fallback_used:
+        return "deterministic fallback after live_llm attempt"
+    return "deterministic + multimodal extraction"
 
 
 def _triage_confidence(
@@ -1092,6 +1488,7 @@ def _complete_with_fallback(
     rag_duration_ms: float,
     llm_duration_ms: float,
 ) -> TriageOutput:
+    fallback = validate_triage_output(fallback)
     total_duration_ms = round((time.perf_counter() - triage_started_at) * 1000, 2)
     log_event(
         "model_triage_failed",
@@ -1156,10 +1553,22 @@ def _ticket_description(*, incident_id: str, tenant_id: str, description: str, t
         description or triage.technical_summary,
         "",
         f"Triage summary: {triage.triage_summary or triage.technical_summary}",
+        f"Incident type: {triage.incident_type}",
+        f"Affected surface: {triage.affected_surface}",
+        f"Observed error: {triage.observed_error}",
+        f"Target team: {triage.target_team}",
         f"Severity reasoning: {triage.severity_reasoning}",
         f"Routing reasoning: {triage.routing_reasoning}",
         f"Confidence: {triage.confidence}",
+        f"Routing confidence: {triage.routing_confidence}",
+        f"Severity confidence: {triage.severity_confidence}",
+        f"Root cause confidence: {triage.root_cause_confidence}",
+        f"Triage mode: {triage.triage_mode}",
     ]
+    if triage.description_signals:
+        lines.append(f"Description signals: {', '.join(triage.description_signals[:6])}")
+    if triage.rag_evidence:
+        lines.append(f"RAG evidence: {' | '.join(triage.rag_evidence[:3])}")
     if triage.retrieved_context_paths:
         lines.append(f"Retrieved context paths: {', '.join(triage.retrieved_context_paths[:4])}")
     if triage.used_attachment_signals:

@@ -33,12 +33,25 @@ class AttachmentRecord(BaseModel):
 class TriageOutput(BaseModel):
     severity: Literal["low", "medium", "high", "critical"]
     affected_service: str
+    incident_type: str = "unknown"
+    affected_surface: str = "unknown"
+    observed_error: str = "unknown"
+    user_scope: str = "unknown"
+    scope_assessment: str = ""
+    target_team: str = "Platform/SRE"
+    routing_confidence: float = 0.0
+    secondary_service_candidates: list[str] = Field(default_factory=list)
     technical_summary: str
     triage_summary: str = ""
     retrieved_context_paths: list[str] = Field(default_factory=list)
+    rag_evidence: list[str] = Field(default_factory=list)
     used_attachment_signals: list[str] = Field(default_factory=list)
+    description_signals: list[str] = Field(default_factory=list)
     relevant_files: list[str] = Field(default_factory=list)
     severity_score: int = 0
+    description_score: int = 0
+    attachment_score: int = 0
+    criticality_score: int = 0
     impact_score: int = 0
     scope_score: int = 0
     reporter_score: int = 0
@@ -49,6 +62,9 @@ class TriageOutput(BaseModel):
     routing_reasoning: str = ""
     workaround_present: bool = False
     security_risk: bool = False
+    business_impact_signals: list[str] = Field(default_factory=list)
+    security_risk_signals: list[str] = Field(default_factory=list)
+    urgency_signals: list[str] = Field(default_factory=list)
     runbook_suggestions: list[str] = Field(default_factory=list)
     is_duplicate: bool = False
     duplicate_of_incident_id: str | None = None
@@ -64,10 +80,14 @@ class TriageOutput(BaseModel):
     attachment_summary: str = ""
     attachment_influence_reasoning: str = ""
     confidence: float = 0.0
+    severity_confidence: float = 0.0
+    root_cause_confidence: float = 0.0
     context_adherence_score: float = 0.0
     llm_used: bool = False
+    live_llm_used: bool = False
     fallback_used: bool = False
     retrieval_empty: bool = False
+    triage_mode: str = ""
 
 
 class TicketRecord(BaseModel):

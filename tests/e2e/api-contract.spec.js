@@ -95,7 +95,12 @@ test.describe("AURA API contract", () => {
     expect(incident.triage.attachment_used).toBeTruthy();
     expect(incident.triage.attachment_summary.toLowerCase()).toContain("checkout-service");
     expect(incident.triage.evidence_from_attachment.join(" ").toLowerCase()).toContain("500");
+    expect(incident.triage.target_team).toMatch(/payments|checkout backend|platform\/sre/i);
+    expect(Number(incident.triage.description_score)).toBeGreaterThan(0);
+    expect(Array.isArray(incident.triage.rag_evidence)).toBeTruthy();
+    expect(String(incident.triage.triage_mode || "").length).toBeGreaterThan(0);
     expect(incident.ticket.description.toLowerCase()).toContain("attachment evidence");
+    expect(incident.ticket.description.toLowerCase()).toContain("triage mode");
   });
 
   test("submit with valid image uses extracted screenshot evidence", async ({ request }) => {
@@ -126,6 +131,8 @@ test.describe("AURA API contract", () => {
     expect(incident.triage.attachment_used).toBeTruthy();
     expect(incident.triage.attachment_summary.toLowerCase()).toContain("screenshot");
     expect(incident.triage.evidence_from_attachment.join(" ").toLowerCase()).toContain("checkout-service");
+    expect(incident.triage.attachment_score).toBeGreaterThan(0);
+    expect(String(incident.triage.scope_assessment || "").length).toBeGreaterThan(0);
   });
 
   test("invalid attachment type is rejected", async ({ request }) => {

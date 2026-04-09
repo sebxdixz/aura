@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AURA Ops Dashboard</title>
+  <title>AURA Incident Command</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <style>
     :root {
@@ -13,18 +13,21 @@
       --g100: #f4f4f1;
       --g150: #ece9e1;
       --g200: #d7d2c9;
+      --g300: #bdb5aa;
       --g500: #6f695d;
+      --g700: #2f2a24;
+      --accent: #af3d20;
       --font-sans: "Inter", system-ui, sans-serif;
       --font-mono: "JetBrains Mono", monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: var(--font-sans); background: #f5f1ea; color: var(--black); min-height: 100vh; }
-    .wrap { max-width: 1200px; margin: 0 auto; padding: 28px 16px 40px; }
+    body { font-family: var(--font-sans); background: linear-gradient(180deg, #f4efe7 0%, #f8f6f1 50%, #eee8df 100%); color: var(--black); min-height: 100vh; }
+    .wrap { max-width: 1360px; margin: 0 auto; padding: 28px 16px 40px; }
     .topbar, .toolbar, .stats, .panel { border: 1px solid var(--g200); background: rgba(255,255,255,.92); }
     .topbar, .toolbar { padding: 14px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .topbar { justify-content: space-between; margin-bottom: 16px; }
     .brand { font-size: 24px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; }
-    .chip, .mono, th, .status {
+    .chip, .mono, th, .status, .kicker, .panel-meta, .panel-title, .label, .badge {
       font-family: var(--font-mono);
     }
     .chip { font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; border: 1px solid var(--g200); padding: 6px 10px; }
@@ -38,17 +41,34 @@
     .stat:last-child { border-right: none; }
     .stat-k { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--g500); margin-bottom: 10px; }
     .stat-v { font-size: 36px; font-weight: 900; line-height: 1; }
-    .panel-head { padding: 12px 14px; border-bottom: 1px solid var(--g200); display: flex; justify-content: space-between; align-items: center; }
-    .panel-title, .panel-meta { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--g500); }
+    .panel { margin-bottom: 16px; overflow: hidden; }
+    .panel-head { padding: 12px 14px; border-bottom: 1px solid var(--g200); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .panel-title, .panel-meta { font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--g500); }
+    .command-empty { padding: 26px; color: var(--g500); font-family: var(--font-mono); }
+    .command-card { padding: 22px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: 18px; }
+    .kicker { font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--g500); margin-bottom: 8px; }
+    .headline { font-size: 34px; line-height: 1.05; letter-spacing: -1.4px; text-transform: uppercase; margin-bottom: 12px; }
+    .summary { font-size: 15px; line-height: 1.6; color: var(--g700); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .card { border: 1px solid var(--g150); background: var(--g50); padding: 14px; }
+    .label { font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--g500); margin-bottom: 10px; }
+    .value { font-size: 13px; line-height: 1.55; color: var(--g700); }
+    .badge { display: inline-block; padding: 4px 10px; border: 1px solid var(--black); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+    .list { display: grid; gap: 8px; }
+    .item { font-size: 13px; line-height: 1.5; color: var(--g700); }
+    .score-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .score-chip { border: 1px solid var(--g200); padding: 6px 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; background: var(--white); }
     .table-wrap { overflow: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1500px; }
     th, td { border-bottom: 1px solid var(--g150); padding: 10px 12px; text-align: left; vertical-align: top; }
     th { background: var(--g50); font-size: 10px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--g500); }
     td { font-size: 12px; color: #2e2a24; }
     .pill { display: inline-block; border: 1px solid var(--g200); padding: 3px 7px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; }
     .empty { padding: 24px; font-family: var(--font-mono); color: var(--g500); }
-    @media (max-width: 900px) {
+    @media (max-width: 980px) {
       .stats { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .command-card { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -56,7 +76,7 @@
   <div class="wrap">
     <div class="topbar">
       <div class="brand">AURA</div>
-      <div class="chip">Internal Ops Dashboard</div>
+      <div class="chip">Incident Commander View</div>
     </div>
 
     <section class="toolbar">
@@ -77,7 +97,17 @@
 
     <section class="panel">
       <div class="panel-head">
-        <span class="panel-title">Incidents</span>
+        <span class="panel-title">Command Brief</span>
+        <span class="panel-meta" id="commandMeta">Select a workspace to see the current priority incident.</span>
+      </div>
+      <div id="commandView">
+        <div class="command-empty">No incident commander brief loaded yet.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Incident Ledger</span>
         <span class="panel-meta" id="incidentsCount">0 records</span>
       </div>
       <div class="table-wrap">
@@ -85,14 +115,14 @@
           <thead>
             <tr>
               <th>Incident</th>
-              <th>Description</th>
               <th>Severity</th>
               <th>Service</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Attachment</th>
+              <th>Routing</th>
+              <th>Commander Summary</th>
               <th>Evidence</th>
-              <th>Influence</th>
+              <th>Score Breakdown</th>
+              <th>Created</th>
+              <th>Status</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -113,6 +143,8 @@
     const statusMsg = document.getElementById("statusMsg");
     const incidentsBody = document.getElementById("incidentsBody");
     const incidentsCount = document.getElementById("incidentsCount");
+    const commandView = document.getElementById("commandView");
+    const commandMeta = document.getElementById("commandMeta");
     let currentTenant = "";
 
     document.getElementById("loadWorkspaceBtn").addEventListener("click", loadWorkspace);
@@ -150,11 +182,71 @@
         document.getElementById("stat_critical").textContent = String(dashboard.critical_incidents || 0);
         document.getElementById("stat_attachments").textContent = String((incidents || []).filter((item) => item.attachment && item.attachment.attachment_filename).length);
 
+        renderCommandBrief(incidents || []);
         renderIncidents(incidents || []);
         statusMsg.textContent = `workspace loaded: ${tenant}`;
       } catch (error) {
         statusMsg.textContent = "workspace load failed";
       }
+    }
+
+    function renderCommandBrief(items) {
+      const sorted = [...items].sort((a, b) => severityRank(b.triage?.severity) - severityRank(a.triage?.severity));
+      const incident = sorted[0];
+      if (!incident) {
+        commandView.innerHTML = '<div class="command-empty">No incidents for this tenant.</div>';
+        commandMeta.textContent = "No incidents";
+        return;
+      }
+
+      const triage = incident.triage || {};
+      commandMeta.textContent = `${items.length} total incidents • commander focus: ${incident.incident_id}`;
+      commandView.innerHTML = `
+        <div class="command-card">
+          <div>
+            <div class="kicker">Current Highest Priority</div>
+            <div class="headline">Triage Score: ${esc(String(triage.severity || "low").toUpperCase())} (${esc(String(triage.severity_score || 0))}/100)</div>
+            <div class="summary">${esc(triage.triage_summary || triage.technical_summary || incident.description || "-")}</div>
+            <div class="grid">
+              <div class="card">
+                <div class="label">Routing Decision</div>
+                <div class="value">${esc(triage.target_team || "-")} • ${esc(triage.affected_service || "-")} • confidence ${esc(String(triage.routing_confidence ?? "-"))}</div>
+              </div>
+              <div class="card">
+                <div class="label">Scope</div>
+                <div class="value">${esc(triage.scope_assessment || triage.user_scope || "-")}</div>
+              </div>
+              <div class="card">
+                <div class="label">Severity Reasoning</div>
+                <div class="value">${esc(triage.severity_reasoning || "-")}</div>
+              </div>
+              <div class="card">
+                <div class="label">Recommended Investigation</div>
+                <div class="value">${esc(triage.proposed_fix || "-")}</div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="badge">Incident ${esc(incident.incident_id || "")}</div>
+            <div class="card" style="margin-bottom:12px;">
+              <div class="label">Score Breakdown</div>
+              <div class="score-row">
+                <span class="score-chip">Description +${esc(String(triage.description_score || 0))}</span>
+                <span class="score-chip">Attachment +${esc(String(triage.attachment_score || 0))}</span>
+                <span class="score-chip">Criticality +${esc(String(triage.criticality_score || 0))}</span>
+              </div>
+            </div>
+            <div class="card" style="margin-bottom:12px;">
+              <div class="label">Matched Context</div>
+              <div class="list">${renderList(triage.rag_evidence && triage.rag_evidence.length ? triage.rag_evidence : triage.retrieved_context_paths || [])}</div>
+            </div>
+            <div class="card">
+              <div class="label">Evidence Used</div>
+              <div class="list">${renderList([...(triage.description_signals || []), ...(triage.used_attachment_signals || [])].slice(0, 8))}</div>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
     function renderIncidents(items) {
@@ -166,32 +258,57 @@
 
       incidentsBody.innerHTML = items.map((item) => {
         const id = esc(item.incident_id || "");
+        const triage = item.triage || {};
         const status = String(item.status || "").toUpperCase();
         const created = String(item.created_at || "").replace("T", " ").slice(0, 19);
         const action = String(item.status || "").toLowerCase() === "open"
           ? `<button class="ghost" data-incident-id="${id}">Resolve</button>`
-          : "—";
+          : "&mdash;";
+        const routingBits = [
+          triage.target_team || "",
+          triage.routing_confidence !== undefined ? `conf=${triage.routing_confidence}` : "",
+          triage.incident_type || ""
+        ].filter(Boolean).join(" | ");
+        const evidenceBits = [
+          triage.attachment_summary || item.attachment?.attachment_summary || "",
+          triage.rag_evidence?.[0] || "",
+        ].filter(Boolean).join(" | ");
+        const scoreBits = [
+          `desc +${triage.description_score || 0}`,
+          `attach +${triage.attachment_score || 0}`,
+          `critical +${triage.criticality_score || 0}`,
+        ].join(" | ");
 
         return `
           <tr>
             <td class="mono">${id}</td>
-            <td>${esc(item.description || "")}</td>
-            <td><span class="pill">${esc(item.triage?.severity || "low")}</span></td>
-            <td class="mono">${esc(item.triage?.affected_service || "-")}</td>
-            <td><span class="pill" id="status-${id}">${status}</span></td>
+            <td><span class="pill">${esc(triage.severity || "low")}</span> ${esc(String(triage.severity_score || 0))}</td>
+            <td class="mono">${esc(triage.affected_service || "-")}</td>
+            <td>${esc(routingBits || "-")}</td>
+            <td>${esc(triage.technical_summary || item.description || "-")}</td>
+            <td>${esc(evidenceBits || "-")}</td>
+            <td>${esc(scoreBits)}</td>
             <td class="mono">${created}</td>
-            <td class="mono">${esc(item.attachment?.attachment_filename || "-")}</td>
-            <td>${esc(item.triage?.attachment_summary || item.attachment?.attachment_summary || "-")}</td>
-            <td>${esc(item.triage?.attachment_influence_reasoning || "-")}</td>
+            <td><span class="pill" id="status-${id}">${status}</span></td>
             <td>${action}</td>
           </tr>
         `;
       }).join("");
     }
 
+    function renderList(items) {
+      if (!items || !items.length) {
+        return '<div class="item">No strong evidence available yet.</div>';
+      }
+      return items.map((item) => `<div class="item">${esc(item)}</div>`).join("");
+    }
+
+    function severityRank(value) {
+      return { critical: 4, high: 3, medium: 2, low: 1 }[String(value || "").toLowerCase()] || 0;
+    }
+
     async function resolveIncident(incidentId) {
       const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}/resolve`, { method: "POST" });
-      const data = await response.json();
       if (!response.ok) return;
       await loadWorkspace();
     }
