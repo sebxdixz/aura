@@ -1,293 +1,139 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AURA | Intake</title>
-  <meta name="description" content="Public incident intake portal for e-commerce users." />
+  <title>AURA · Intake</title>
+  <meta name="description" content="Public incident intake portal for multimodal incident triage." />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --black: #000;
+      --black: #111;
       --white: #fff;
       --g50: #fafafa;
-      --g100: #f4f4f4;
-      --g150: #ededed;
-      --g200: #dfdfdf;
-      --g300: #c7c7c7;
-      --g500: #6e6e6e;
-      --g700: #2f2f2f;
+      --g100: #f4f4f1;
+      --g150: #ece9e1;
+      --g200: #d7d2c9;
+      --g300: #bdb5aa;
+      --g500: #6f695d;
+      --g700: #312d27;
+      --accent: #af3d20;
+      --ok: #138a4f;
       --font-sans: "Inter", system-ui, sans-serif;
       --font-mono: "JetBrains Mono", monospace;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: var(--font-sans);
-      background: var(--g100);
+      background: linear-gradient(180deg, #f3efe8 0%, #f7f5ef 60%, #ece6dd 100%);
       color: var(--black);
       min-height: 100vh;
-      background-image: radial-gradient(circle, var(--g300) 1px, transparent 1px);
-      background-size: 22px 22px;
     }
-
-    .wrap { max-width: 900px; margin: 0 auto; padding: 28px 16px 40px; }
-
-    .topbar {
+    .wrap { max-width: 900px; margin: 0 auto; padding: 28px 16px 44px; }
+    .topbar, .hero, form, .out-container {
       border: 1px solid var(--g200);
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255,255,255,0.92);
       backdrop-filter: blur(8px);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 16px;
-      margin-bottom: 24px;
-      gap: 12px;
     }
-
-    .brand {
-      font-size: 24px;
-      font-weight: 900;
-      letter-spacing: -1px;
-      text-transform: uppercase;
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 16px; margin-bottom: 22px;
     }
-
-    .topbar-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .brand { font-size: 24px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; }
+    .chip, .micro, .field-label, .res-label {
+      font-family: var(--font-mono); text-transform: uppercase;
     }
-
     .chip {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      border: 1px solid var(--g200);
-      padding: 6px 10px;
-      color: var(--g700);
-      background: var(--white);
-      white-space: nowrap;
+      font-size: 10px; letter-spacing: 1.4px; border: 1px solid var(--g200);
+      padding: 6px 10px; color: var(--g700); background: var(--white);
     }
-
-    .lang-toggle {
-      display: inline-flex;
-      border: 1px solid var(--g200);
-      background: var(--white);
-    }
-
-    .lang-btn {
-      border: none;
-      background: transparent;
-      padding: 7px 10px;
-      font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      cursor: pointer;
-      color: var(--g500);
-    }
-
-    .lang-btn.active {
-      background: var(--black);
-      color: var(--white);
-    }
-
-    .hero {
-      border: 1px solid var(--g200);
-      background: var(--white);
-      padding: 24px;
-      margin-bottom: 24px;
-    }
-
-    .overline {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--g500);
-      margin-bottom: 8px;
-    }
-
-    h1 {
-      font-size: 38px;
-      line-height: 1;
-      letter-spacing: -1.5px;
-      text-transform: uppercase;
-      margin-bottom: 12px;
-    }
-
-    .hero p {
-      color: var(--g700);
-      font-size: 14px;
-      line-height: 1.6;
-      max-width: 640px;
-    }
-
-    form {
-      border: 1px solid var(--g200);
-      background: var(--white);
-      margin-bottom: 24px;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .field {
-      border-right: 1px solid var(--g200);
-      border-bottom: 1px solid var(--g200);
-    }
-
-    .row .field:last-child { border-right: none; }
-
+    .hero { padding: 24px; margin-bottom: 22px; }
+    .micro { font-size: 10px; letter-spacing: 2px; color: var(--g500); margin-bottom: 10px; }
+    h1 { font-size: 40px; line-height: 1; letter-spacing: -1.8px; text-transform: uppercase; margin-bottom: 14px; }
+    .hero p { max-width: 680px; color: var(--g700); line-height: 1.55; font-size: 14px; }
+    form { overflow: hidden; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; }
+    .field { border-right: 1px solid var(--g200); border-bottom: 1px solid var(--g200); }
+    .field:last-child { border-right: none; }
+    .field.full { grid-column: 1 / -1; border-right: none; }
     .field-label {
-      font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 1.8px;
-      text-transform: uppercase;
-      color: var(--g500);
-      background: var(--g50);
-      border-bottom: 1px solid var(--g150);
-      padding: 10px 14px 6px;
+      font-size: 10px; letter-spacing: 1.8px; color: var(--g500);
+      background: var(--g50); border-bottom: 1px solid var(--g150); padding: 10px 14px 7px;
     }
-
-    .field input,
-    .field textarea,
-    .field select {
-      width: 100%;
-      border: none;
-      outline: none;
-      padding: 14px;
-      font-size: 13px;
-      font-family: var(--font-mono);
-      color: var(--black);
-      background: transparent;
+    .field input, .field textarea, .field select {
+      width: 100%; border: none; outline: none; padding: 14px; font-size: 13px;
+      font-family: var(--font-mono); color: var(--black); background: transparent;
     }
-
-    .field textarea {
-      min-height: 120px;
-      resize: vertical;
+    .field textarea { min-height: 140px; resize: vertical; }
+    .file-shell { padding: 14px; display: grid; gap: 10px; }
+    .file-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .file-name, .file-note {
+      font-family: var(--font-mono); font-size: 11px; color: var(--g700);
     }
-
-    .field.full {
-      grid-column: 1 / -1;
-      border-right: none;
-    }
-
+    .file-note { color: var(--g500); }
+    .preview { max-width: 100%; max-height: 180px; border: 1px solid var(--g200); display: none; }
+    .preview.visible { display: block; }
     .actions {
-      border-top: 1px solid var(--g200);
-      background: var(--g50);
-      padding: 16px;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
+      background: var(--g50); padding: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
     }
-
     button {
-      border: none;
-      background: var(--black);
-      color: var(--white);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 1.6px;
-      text-transform: uppercase;
-      padding: 0 20px;
-      height: 44px;
-      cursor: pointer;
-      transition: 0.1s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
+      border: none; background: var(--black); color: var(--white);
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.6px;
+      text-transform: uppercase; padding: 0 20px; height: 44px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
     }
-
-    button:hover { background: var(--g700); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .helper {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--g500);
-    }
-
-    .out-container {
-      display: none;
-      margin-bottom: 24px;
-      border: 1px solid var(--g200);
-      background: var(--white);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.05);
-    }
-
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .status-copy { font-family: var(--font-mono); font-size: 10px; color: var(--g500); }
+    .out-container { display: none; margin-top: 24px; overflow: hidden; }
     .out-container.visible { display: block; }
-
     .out-head {
-      border-bottom: 1px solid var(--g200);
-      background: var(--black);
-      padding: 12px 16px;
-      color: var(--white);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
+      background: var(--black); color: var(--white); display: flex; justify-content: space-between;
+      align-items: center; padding: 12px 16px;
     }
-
-    .out-body {
-      padding: 14px 16px;
-      font-family: var(--font-mono);
-      font-size: 12px;
-      color: #8d0000;
-      white-space: pre-wrap;
-      line-height: 1.5;
+    .out-title, .badge { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.7px; text-transform: uppercase; }
+    .badge { border: 1px solid rgba(255,255,255,.2); padding: 4px 8px; }
+    .terminal {
+      display: none; padding: 22px; background: #f8f6f1; font-family: var(--font-mono);
+      font-size: 12px; color: var(--g700); line-height: 1.6; min-height: 180px;
     }
-
-    #toasts {
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      z-index: 2000;
-      pointer-events: none;
+    .terminal.active { display: block; }
+    .term-line { opacity: 0; animation: fadeIn .2s forwards; }
+    .result-block { display: none; }
+    .result-block.active { display: block; }
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; }
+    .res-card {
+      border-right: 1px solid var(--g150); border-bottom: 1px solid var(--g150); padding: 18px;
     }
-
-    .toast {
-      background: var(--black);
-      color: var(--white);
-      border: 1px solid var(--black);
-      padding: 10px 16px;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      letter-spacing: 1px;
+    .res-card.full { grid-column: 1 / -1; border-right: none; }
+    .result-grid .res-card:nth-child(2n) { border-right: none; }
+    .res-label { font-size: 10px; letter-spacing: 1.9px; color: var(--g500); margin-bottom: 10px; }
+    .res-val { font-size: 14px; line-height: 1.55; color: var(--black); }
+    .sev-badge {
+      display: inline-block; padding: 4px 10px; border: 1px solid var(--black);
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; margin-bottom: 12px;
     }
-
-    .toast.err {
-      background: var(--white);
-      color: var(--black);
-      border-color: var(--black);
+    .code-block {
+      background: var(--black); color: var(--white); padding: 16px; font-family: var(--font-mono);
+      font-size: 12px; white-space: pre-wrap; overflow-x: auto;
     }
-
     .spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: var(--white);
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
+      width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);
+      border-top-color: var(--white); border-radius: 50%; animation: spin .6s linear infinite;
     }
-
+    .toast-wrap {
+      position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 20;
+    }
+    .toast {
+      background: var(--black); color: var(--white); padding: 10px 14px; border: 1px solid var(--black);
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+    }
+    .toast.err { background: var(--white); color: var(--black); }
     @keyframes spin { to { transform: rotate(360deg); } }
-
+    @keyframes fadeIn { to { opacity: 1; } }
     @media (max-width: 760px) {
-      .row { grid-template-columns: 1fr; }
-      .field { border-right: none; }
-      .topbar { flex-wrap: wrap; }
-      .topbar-right { width: 100%; justify-content: space-between; }
-      .chip { flex: 1; text-align: center; }
+      .row, .result-grid { grid-template-columns: 1fr; }
+      .field, .res-card { border-right: none !important; }
     }
   </style>
 </head>
@@ -295,241 +141,207 @@
   <div class="wrap">
     <div class="topbar">
       <div class="brand">AURA</div>
-      <div class="topbar-right">
-        <div class="chip" data-i18n="chip_portal">Public Intake Portal</div>
-        <div class="lang-toggle">
-          <button type="button" class="lang-btn" id="btnEs">ES</button>
-          <button type="button" class="lang-btn" id="btnEn">EN</button>
-        </div>
-      </div>
+      <div class="chip">Incident Commander Intake</div>
     </div>
 
     <section class="hero">
-      <div class="overline" data-i18n="hero_overline">Intelligent Triage Pipeline</div>
-      <h1 data-i18n="hero_title">Report Issue</h1>
-      <p data-i18n="hero_desc">
-        Describe the problem below. Our AI agent will analyze your request, extract technical context,
-        and send it to the engineering team.
-      </p>
-    </section>
-
-    <section class="hero" id="thanksView" style="display:none;">
-      <div class="overline" data-i18n="thanks_overline">Thank you</div>
-      <h1 data-i18n="thanks_title">Report Received</h1>
-      <p data-i18n="thanks_desc">
-        Thanks for helping us improve. Your report was submitted successfully.
-        We are already working on it.
-      </p>
+      <div class="micro">Incident Commander Intake</div>
+      <h1>Escalate Incident</h1>
+      <p>Submit the incident with text plus a screenshot or log file. AURA will validate the evidence, assess severity, recommend routing, and generate the first operational brief.</p>
     </section>
 
     <form id="incidentForm">
       <div class="row">
         <div class="field">
-          <div class="field-label" data-i18n="label_name">Reporter Name</div>
-          <input id="reporter_name" data-i18n-ph="ph_name" placeholder="John Doe" required />
+          <div class="field-label">Reporter Name</div>
+          <input id="reporter_name" placeholder="John Doe" required />
         </div>
         <div class="field">
-          <div class="field-label" data-i18n="label_email">Reporter Email</div>
-          <input id="reporter_email" type="email" data-i18n-ph="ph_email" placeholder="john@example.com" required />
+          <div class="field-label">Reporter Email</div>
+          <input id="reporter_email" type="email" placeholder="john@example.com" required />
         </div>
       </div>
-
       <div class="field full">
-        <div class="field-label" data-i18n="label_category">Issue Category</div>
+        <div class="field-label">Issue Category</div>
         <select id="issue_type" required>
-          <option value="" selected disabled data-i18n="opt_select">Select the affected capability...</option>
-          <option value="checkout" data-i18n="opt_checkout">Checkout / Gateway</option>
-          <option value="login" data-i18n="opt_login">Authentication (Auth0/OAuth)</option>
-          <option value="database" data-i18n="opt_database">Database / Latency</option>
-          <option value="integration" data-i18n="opt_integration">Third-party API Integration</option>
-          <option value="other" data-i18n="opt_other">Other System Anomaly</option>
+          <option value="" selected disabled>Select the affected capability...</option>
+          <option value="checkout">Checkout / Gateway</option>
+          <option value="login">Authentication</option>
+          <option value="database">Database / Latency</option>
+          <option value="integration">Third-party Integration</option>
+          <option value="other">Other System Anomaly</option>
         </select>
       </div>
-
       <div class="field full">
-        <div class="field-label" data-i18n="label_desc">Technical Description and Logs</div>
-        <textarea id="description" data-i18n-ph="ph_desc" placeholder="Paste error traces here..." required></textarea>
+        <div class="field-label">Technical Description</div>
+        <textarea id="description" placeholder="Paste logs, describe impact, mention error codes, and explain what the user saw..." required></textarea>
       </div>
-
       <div class="field full">
-        <div class="field-label" data-i18n="label_attachment">Attachment (Optional)</div>
-        <input
-          id="attachment"
-          type="file"
-          accept=".png,.jpg,.jpeg,.txt,.log,.json,.csv,.pdf,.wav,.mp3,.m4a,.webm,.ogg"
-        />
+        <div class="field-label">Attachment Evidence</div>
+        <div class="file-shell">
+          <div class="file-inline">
+            <input id="attachment" type="file" accept=".png,.jpg,.jpeg,.webp,.txt,.log,.json,image/png,image/jpeg,image/webp,text/plain,application/json" />
+            <span class="file-name" id="fileName">No file selected</span>
+          </div>
+          <div class="file-note" id="fileStatus">Supported: PNG, JPG, JPEG, WEBP, TXT, LOG, JSON. The attachment will be processed as evidence, not as instructions.</div>
+          <img id="imagePreview" class="preview" alt="Attachment preview" />
+        </div>
       </div>
-
       <div class="actions">
-        <button type="submit" id="submitBtn" data-i18n="btn_submit">Deploy Agent</button>
-        <span class="helper" data-i18n="helper_model">OpenRouter two-stage execution active.</span>
+        <button type="submit" id="submitBtn">Launch Triage</button>
+        <span class="status-copy">Description signals, attachment evidence, and repository context all contribute to the commander brief.</span>
       </div>
     </form>
 
     <section class="out-container" id="outWrap">
-      <div class="out-head" data-i18n="error_head">Submission Error</div>
-      <div class="out-body" id="outBody"></div>
+      <div class="out-head">
+        <span class="out-title">AURA Incident Command Trace</span>
+        <span class="badge" id="outStatus">Running</span>
+      </div>
+      <div class="terminal" id="terminal">
+        <div id="termLines"></div>
+      </div>
+      <div class="result-block" id="resultBlock">
+        <div class="result-grid">
+          <div class="res-card full">
+            <div class="res-label">Commander Summary</div>
+            <div class="sev-badge" id="resSev">LOW</div>
+            <div class="res-val" id="resSum"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Root Cause</div>
+            <div class="res-val" id="resRCA"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Recommended Investigation</div>
+            <div class="res-val" id="resFix"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Routing Decision</div>
+            <div class="res-val" id="resRouting"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Assessment Signals</div>
+            <div class="res-val" id="resExplainability"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Score Breakdown</div>
+            <div class="res-val" id="resScoreBreakdown"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">RAG Evidence</div>
+            <div class="res-val" id="resRagEvidence"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Incident Pattern</div>
+            <div class="res-val" id="resPattern"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Possible Duplicate</div>
+            <div class="res-val" id="resDuplicate"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Scope Assessment</div>
+            <div class="res-val" id="resScope"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Incident Links</div>
+            <div class="res-val" id="resLinks"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Attachment Evidence</div>
+            <div class="res-val" id="resAttachment"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Attachment Influence</div>
+            <div class="res-val" id="resInfluence"></div>
+          </div>
+          <div class="res-card full">
+            <div class="res-label">Suggested Command</div>
+            <div class="code-block" id="resCode"></div>
+          </div>
+          <div class="res-card full">
+            <div class="res-label">Operational Handoff</div>
+            <div class="res-val" id="resIntegrations" style="font-family:var(--font-mono); font-size:12px;"></div>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 
-  <div id="toasts"></div>
+  <div class="toast-wrap" id="toasts"></div>
 
   <script>
     const API = window.location.hostname === "localhost"
       ? "http://localhost:8000"
       : `${location.protocol}//${location.hostname}:8000`;
 
-    const I18N = {
-      es: {
-        chip_portal: "Portal Publico de Reportes",
-        hero_overline: "Pipeline de Triage Inteligente",
-        hero_title: "Reportar Incidente",
-        hero_desc: "Describe el problema abajo. Nuestro agente de IA analizara tu reporte, extraera contexto tecnico y lo enviara al equipo de ingenieria.",
-        thanks_overline: "Gracias",
-        thanks_title: "Reporte Recibido",
-        thanks_desc: "Gracias por ayudarnos a mejorar. Tu reporte se envio correctamente. Ya estamos trabajando en ello.",
-        label_name: "Nombre de Quien Reporta",
-        label_email: "Correo de Quien Reporta",
-        label_category: "Categoria del Incidente",
-        label_desc: "Descripcion Tecnica y Logs",
-        label_attachment: "Adjunto (Opcional)",
-        opt_select: "Selecciona la capacidad afectada...",
-        opt_checkout: "Checkout / Pasarela",
-        opt_login: "Autenticacion (Auth0/OAuth)",
-        opt_database: "Base de Datos / Latencia",
-        opt_integration: "Integracion API de Terceros",
-        opt_other: "Otra Anomalia del Sistema",
-        ph_name: "Juan Perez",
-        ph_email: "juan@ejemplo.com",
-        ph_desc: "Pega trazas, logs o comportamiento observado. Mientras mas detalle, mejor.",
-        btn_submit: "Enviar Reporte",
-        btn_analyzing: "Analizando",
-        helper_model: "Ejecucion OpenRouter en dos etapas activa.",
-        error_head: "Error de Envio",
-        err_runtime: "Fallo de ejecucion.",
-        err_prefix: "Error",
-        toast_failed: "Envio fallido",
-        chip_confirmed: "Envio Confirmado"
-      },
-      en: {
-        chip_portal: "Public Intake Portal",
-        hero_overline: "Intelligent Triage Pipeline",
-        hero_title: "Report Issue",
-        hero_desc: "Describe the problem below. Our AI agent will analyze your report, extract technical context, and route it to the engineering team.",
-        thanks_overline: "Thank you",
-        thanks_title: "Report Received",
-        thanks_desc: "Thanks for helping us improve. Your report was submitted successfully. We are already working on it.",
-        label_name: "Reporter Name",
-        label_email: "Reporter Email",
-        label_category: "Issue Category",
-        label_desc: "Technical Description and Logs",
-        label_attachment: "Attachment (Optional)",
-        opt_select: "Select the affected capability...",
-        opt_checkout: "Checkout / Gateway",
-        opt_login: "Authentication (Auth0/OAuth)",
-        opt_database: "Database / Latency",
-        opt_integration: "Third-party API Integration",
-        opt_other: "Other System Anomaly",
-        ph_name: "John Doe",
-        ph_email: "john@example.com",
-        ph_desc: "Paste traces, logs, or observed behavior. More detail gives better triage.",
-        btn_submit: "Submit Report",
-        btn_analyzing: "Analyzing",
-        helper_model: "OpenRouter two-stage execution active.",
-        error_head: "Submission Error",
-        err_runtime: "Runtime failure.",
-        err_prefix: "Error",
-        toast_failed: "Submission failed",
-        chip_confirmed: "Submission Confirmed"
-      }
-    };
-
-    let lang = localStorage.getItem("aura_lang") || "es";
-
-    function t(key) {
-      return (I18N[lang] && I18N[lang][key]) || (I18N.es && I18N.es[key]) || key;
-    }
-
-    function applyI18n() {
-      document.documentElement.lang = lang;
-      document.querySelectorAll("[data-i18n]").forEach((el) => {
-        const key = el.dataset.i18n;
-        const value = t(key);
-        if (value) el.textContent = value;
-      });
-      document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
-        const key = el.dataset.i18nPh;
-        const value = t(key);
-        if (value) el.placeholder = value;
-      });
-
-      document.getElementById("btnEs").classList.toggle("active", lang === "es");
-      document.getElementById("btnEn").classList.toggle("active", lang === "en");
-    }
-
-    document.getElementById("btnEs").addEventListener("click", () => {
-      lang = "es";
-      localStorage.setItem("aura_lang", lang);
-      applyI18n();
-    });
-
-    document.getElementById("btnEn").addEventListener("click", () => {
-      lang = "en";
-      localStorage.setItem("aura_lang", lang);
-      applyI18n();
-    });
-
     const pathMatch = window.location.pathname.match(/^\/intake\/([A-Za-z0-9._-]+)\/?$/);
     const tenantId = (pathMatch && pathMatch[1]) || new URLSearchParams(window.location.search).get("tenant_id") || "hackathon-demo";
-    const onThanksPage = /^\/thanks\/?$/.test(window.location.pathname);
 
     const submitBtn = document.getElementById("submitBtn");
     const outWrap = document.getElementById("outWrap");
-    const outBody = document.getElementById("outBody");
+    const outStatus = document.getElementById("outStatus");
+    const terminal = document.getElementById("terminal");
+    const termLines = document.getElementById("termLines");
+    const resultBlock = document.getElementById("resultBlock");
+    const attachmentInput = document.getElementById("attachment");
+    const fileNameEl = document.getElementById("fileName");
+    const fileStatusEl = document.getElementById("fileStatus");
+    const imagePreview = document.getElementById("imagePreview");
 
-    function setThanksMode() {
-      document.getElementById("incidentForm").style.display = "none";
-      document.getElementById("thanksView").style.display = "block";
-      const topChip = document.querySelector(".chip");
-      if (topChip) {
-        topChip.textContent = t("chip_confirmed");
+    const termDelays = [
+      { t: 0, msg: "[SYS] Serializing incident payload..." },
+      { t: 500, msg: "[AURA] Validating attachment allowlist and size..." },
+      { t: 1200, msg: "[AURA] Extracting attachment evidence..." },
+      { t: 2400, msg: "[AURA] Injecting evidence into triage and RAG..." },
+      { t: 3800, msg: "[AURA] Preparing ticket + notification payload..." }
+    ];
+
+    attachmentInput.addEventListener("change", () => {
+      const file = attachmentInput.files && attachmentInput.files[0];
+      if (!file) {
+        fileNameEl.textContent = "No file selected";
+        fileStatusEl.textContent = "Supported: PNG, JPG, JPEG, WEBP, TXT, LOG, JSON. The attachment will be processed as evidence, not as instructions.";
+        imagePreview.classList.remove("visible");
+        imagePreview.removeAttribute("src");
+        return;
       }
-    }
-
-    function redirectToThanks(incidentId) {
-      const qs = new URLSearchParams({
-        tenant: tenantId,
-        incident: incidentId || ""
-      }).toString();
-      window.location.assign(`/thanks?${qs}`);
-    }
-
-    function toast(message, isError = false) {
-      const el = document.createElement("div");
-      el.className = `toast${isError ? " err" : ""}`;
-      el.textContent = message;
-      document.getElementById("toasts").appendChild(el);
-      setTimeout(() => el.remove(), 3200);
-    }
-
-    if (onThanksPage) {
-      setThanksMode();
-    }
+      fileNameEl.textContent = `${file.name} (${file.type || "unknown"})`;
+      fileStatusEl.textContent = "Attachment queued for validation and evidence extraction.";
+      if (file.type.startsWith("image/")) {
+        imagePreview.src = URL.createObjectURL(file);
+        imagePreview.classList.add("visible");
+      } else {
+        imagePreview.classList.remove("visible");
+        imagePreview.removeAttribute("src");
+      }
+    });
 
     document.getElementById("incidentForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      outWrap.classList.remove("visible");
-      outBody.textContent = "";
-
       submitBtn.disabled = true;
-      submitBtn.innerHTML = `<div class="spinner"></div> ${t("btn_analyzing")}`;
+      submitBtn.innerHTML = '<div class="spinner"></div> ANALYZING';
+      outWrap.classList.add("visible");
+      outStatus.textContent = "PROCESSING";
+      terminal.classList.add("active");
+      resultBlock.classList.remove("active");
+      termLines.innerHTML = "";
+
+      termDelays.forEach((step) => {
+        setTimeout(() => {
+          const div = document.createElement("div");
+          div.className = "term-line";
+          div.textContent = step.msg;
+          termLines.appendChild(div);
+        }, step.t);
+      });
 
       const reporterName = document.getElementById("reporter_name").value.trim();
       const reporterEmail = document.getElementById("reporter_email").value.trim();
       const issueType = document.getElementById("issue_type").value;
       const description = document.getElementById("description").value.trim();
-      const fileInput = document.getElementById("attachment");
-      const attachmentFile = fileInput && fileInput.files ? fileInput.files[0] : null;
+      const attachmentFile = attachmentInput.files && attachmentInput.files[0];
 
       const fd = new FormData();
       fd.append("tenant_id", tenantId);
@@ -542,20 +354,177 @@
       try {
         const response = await fetch(`${API}/api/incidents/submit`, { method: "POST", body: fd });
         const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.detail || t("err_runtime"));
+        if (!response.ok) throw new Error(data.detail || "Incident processing failed.");
+        if (["submitted", "processing"].includes(String(data.processing_state || ""))) {
+          outStatus.textContent = "QUEUED";
+          termLines.innerHTML += `<div class="term-line">[AURA] Incident queued as ${data.incident_id}. Waiting for worker completion...</div>`;
+          const completed = await pollIncident(data.incident_id);
+          if (String(completed.processing_state || "") === "failed") {
+            return;
+          }
+          renderResults(completed);
+        } else {
+          renderResults(data);
         }
-        redirectToThanks(data.incident_id);
       } catch (error) {
-        outWrap.classList.add("visible");
-        outBody.textContent = `${t("err_prefix")}: ${String(error.message || error)}`;
-        toast(t("toast_failed"), true);
+        outStatus.textContent = "FAILED";
+        termLines.innerHTML += `<div class="term-line">[ERR] ${String(error.message || error)}</div>`;
+        fileStatusEl.textContent = `Attachment rejected or processing failed: ${String(error.message || error)}`;
         submitBtn.disabled = false;
-        submitBtn.textContent = t("btn_submit");
+        submitBtn.textContent = "Launch Triage";
+        toast(String(error.message || error), true);
       }
     });
 
-    applyI18n();
+    function renderResults(data) {
+      terminal.classList.remove("active");
+      resultBlock.classList.add("active");
+      outStatus.textContent = "COMPLETED";
+
+      const tr = data.triage || {};
+      const attachment = data.attachment || {};
+      document.getElementById("resSev").textContent = `${String(tr.severity || "low").toUpperCase()}${tr.severity_score ? ` (${tr.severity_score})` : ""}`;
+      document.getElementById("resSum").textContent = tr.triage_summary || tr.technical_summary || data.description || "";
+      document.getElementById("resRCA").textContent = tr.root_cause_analysis || "No RCA generated.";
+      document.getElementById("resFix").textContent = tr.proposed_fix || "No proposed fix.";
+      document.getElementById("resRouting").textContent = [
+        tr.target_team ? `team=${tr.target_team}` : "",
+        tr.affected_service ? `service=${tr.affected_service}` : "",
+        tr.incident_type ? `type=${tr.incident_type}` : "",
+        tr.routing_confidence !== undefined ? `routing_confidence=${tr.routing_confidence}` : ""
+      ].filter(Boolean).join(" | ");
+      document.getElementById("resExplainability").textContent = [
+        tr.affected_surface ? `surface=${tr.affected_surface}` : "",
+        tr.observed_error ? `error=${tr.observed_error}` : "",
+        tr.scope_assessment || (tr.user_scope ? `scope=${tr.user_scope}` : ""),
+        tr.confidence !== undefined ? `confidence=${tr.confidence}` : "",
+        tr.severity_confidence !== undefined ? `severity_confidence=${tr.severity_confidence}` : "",
+        tr.root_cause_confidence !== undefined ? `rca_confidence=${tr.root_cause_confidence}` : ""
+      ].filter(Boolean).join(" | ");
+      document.getElementById("resScoreBreakdown").textContent = [
+        tr.description_score !== undefined ? `Technical description: +${tr.description_score}` : "",
+        tr.attachment_score !== undefined ? `Attachment evidence: +${tr.attachment_score}` : "",
+        tr.criticality_score !== undefined ? `Critical flow impact: +${tr.criticality_score}` : "",
+        Number(tr.recurrence_count_30d || 0) > 0 ? `Recurring pattern: seen ${tr.recurrence_count_30d} times in 30d` : "",
+        tr.severity_score !== undefined ? `Final score: ${tr.severity_score}/100` : ""
+      ].filter(Boolean).join(" | ");
+      document.getElementById("resRagEvidence").textContent = (tr.rag_evidence && tr.rag_evidence.length)
+        ? tr.rag_evidence.join(" | ")
+        : ((tr.retrieved_context_paths && tr.retrieved_context_paths.length) ? tr.retrieved_context_paths.join(" | ") : "No strong repository context was retrieved.");
+      document.getElementById("resPattern").textContent = [
+        tr.related_incident_ids && tr.related_incident_ids.length ? `related=${tr.related_incident_ids.join(", ")}` : "",
+        tr.cluster_id ? `cluster=${tr.cluster_id}` : "",
+        tr.recurrence_count_7d !== undefined ? `seen_7d=${tr.recurrence_count_7d}` : "",
+        tr.recurrence_count_30d !== undefined ? `seen_30d=${tr.recurrence_count_30d}` : "",
+        tr.multi_ticket_influence_reasoning || ""
+      ].filter(Boolean).join(" | ");
+      document.getElementById("resDuplicate").textContent = tr.is_duplicate
+        ? `duplicate_of=${tr.duplicate_of_incident_id || "existing_open_incident"} | confidence=${tr.dedup_confidence ?? 0}`
+        : "No active duplicate match detected.";
+      document.getElementById("resScope").textContent = tr.scope_assessment || tr.user_scope || "single_report";
+      document.getElementById("resLinks").textContent = data.related_links && data.related_links.length
+        ? data.related_links.map((link) => `${link.relationship_type}:${link.target_incident_id} (${link.similarity_score})`).join(" | ")
+        : "No persisted incident links yet.";
+      document.getElementById("resAttachment").textContent = tr.attachment_summary || attachment.attachment_summary || "No attachment evidence.";
+      document.getElementById("resInfluence").textContent = tr.attachment_influence_reasoning || "Attachment did not materially change the triage.";
+      document.getElementById("resCode").textContent = tr.proposed_cli_command || "echo 'No CLI action needed.'";
+
+      let integrations = "";
+      if (data.ticket && data.ticket.ticket_id) {
+        integrations += `ticket=${data.ticket.ticket_id} provider=${data.ticket.provider}\n`;
+      }
+      if (data.notifications && data.notifications[0]) {
+        integrations += `notify=${data.notifications[0].detail}\n`;
+      }
+      if (attachment.attachment_filename) {
+        integrations += `attachment=${attachment.attachment_filename} used=${String(tr.attachment_used)}\n`;
+        fileStatusEl.textContent = `Attachment accepted: ${attachment.attachment_filename}`;
+      } else {
+        fileStatusEl.textContent = "No attachment used for this incident.";
+      }
+      if (tr.retrieved_context_paths && tr.retrieved_context_paths.length) {
+        integrations += `context=${tr.retrieved_context_paths.slice(0, 3).join(", ")}\n`;
+      }
+      if (tr.used_attachment_signals && tr.used_attachment_signals.length) {
+        integrations += `attachment_signals=${tr.used_attachment_signals.slice(0, 5).join(", ")}\n`;
+      }
+      if (tr.description_signals && tr.description_signals.length) {
+        integrations += `description_signals=${tr.description_signals.slice(0, 5).join(", ")}\n`;
+      }
+      if (tr.related_incident_ids && tr.related_incident_ids.length) {
+        integrations += `related_incidents=${tr.related_incident_ids.slice(0, 5).join(", ")}\n`;
+      }
+      if (tr.severity_reasoning) {
+        integrations += `why_this_score=${tr.severity_reasoning}\n`;
+      }
+      integrations += `triage_mode=${tr.triage_mode || "default"}\n`;
+      integrations += `llm_mode=${tr.llm_mode || "default"}`;
+      document.getElementById("resIntegrations").innerText = integrations;
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Launch Another Triage";
+      outWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+      toast("Commander brief generated successfully.");
+    }
+
+    async function pollIncident(incidentId) {
+      const started = Date.now();
+      while (Date.now() - started < 90000) {
+        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}`);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "Unable to refresh incident status.");
+        }
+        const processingState = String(data.processing_state || "");
+        if (processingState === "failed") {
+          renderFailure(data);
+          return data;
+        }
+        if (!["submitted", "processing"].includes(processingState)) {
+          return data;
+        }
+        outStatus.textContent = processingState.toUpperCase();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      throw new Error("Worker processing timed out while waiting for incident completion.");
+    }
+
+    function renderFailure(data) {
+      terminal.classList.remove("active");
+      resultBlock.classList.add("active");
+      outStatus.textContent = "FAILED";
+      const failedDetail = (data.notifications || []).find((item) => item.status === "failed");
+      const failureText = failedDetail ? failedDetail.detail : "Worker processing failed before the commander brief could be completed.";
+      document.getElementById("resSev").textContent = "FAILED";
+      document.getElementById("resSum").textContent = failureText;
+      document.getElementById("resRCA").textContent = "Processing stopped before a root cause analysis was produced.";
+      document.getElementById("resFix").textContent = "Retry the incident or inspect worker logs and job history.";
+      document.getElementById("resRouting").textContent = `processing_state=${String(data.processing_state || "failed")}`;
+      document.getElementById("resExplainability").textContent = "AURA stored the incident but the async worker did not complete triage.";
+      document.getElementById("resScoreBreakdown").textContent = "No final score available.";
+      document.getElementById("resRagEvidence").textContent = "No final repository context available.";
+      document.getElementById("resPattern").textContent = "Multi-ticket analysis did not complete.";
+      document.getElementById("resDuplicate").textContent = "Duplicate analysis did not complete.";
+      document.getElementById("resScope").textContent = "Scope assessment unavailable.";
+      document.getElementById("resLinks").textContent = "Incident links unavailable.";
+      document.getElementById("resAttachment").textContent = data.attachment?.attachment_filename
+        ? `Attachment stored: ${data.attachment.attachment_filename}`
+        : "No attachment stored.";
+      document.getElementById("resInfluence").textContent = "Attachment influence was not finalized.";
+      document.getElementById("resCode").textContent = "docker compose logs worker";
+      document.getElementById("resIntegrations").innerText = `incident=${data.incident_id}\nprocessing_state=${String(data.processing_state || "failed")}`;
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Retry Incident";
+      toast(failureText, true);
+    }
+
+    function toast(message, isError = false) {
+      const el = document.createElement("div");
+      el.className = `toast${isError ? " err" : ""}`;
+      el.textContent = message;
+      document.getElementById("toasts").appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
   </script>
 </body>
 </html>

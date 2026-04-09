@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 
 from pydantic import BaseModel
 
@@ -9,19 +9,22 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, get_db, ping_db
-from .guardrails import validate_description, validate_file
+from .attachments import persist_attachment
+from .database import SessionLocal, ensure_runtime_schema, get_db, ping_db
+from .guardrails import validate_attachment, validate_description
 from .insights import get_tenant_audit_logs, get_tenant_insights_summary
+from .jobs import JOB_TYPE_PROCESS_INCIDENT, enqueue_job
 from .models import (
     AuditLogRecord,
+    AttachmentRecord,
     FileMeta,
     IncidentRecord,
     IntegrationTestResult,
     JiraIntegrationPayload,
     NotificationRecord,
     SlackIntegrationPayload,
-    TenantIntegrationsStatus,
     TenantDashboard,
+    TenantIntegrationsStatus,
     TenantInsightsSummary,
     TenantRecord,
 )
@@ -29,27 +32,27 @@ from .observability import log_event, metrics_snapshot
 from .rag import auto_index_enabled, index_github_repository, rag_status, reindex_codebase
 from .services import (
     create_incident_id,
-    create_ticket,
     ensure_tenant,
     find_duplicate_incident,
     get_incident,
     get_tenant,
     list_incidents,
-    notify_team,
+    pending_ticket_record,
+    queued_triage_output,
     register_tenant,
     resolve_incident,
-    run_triage,
     save_incident,
     save_jira_integration,
     save_slack_integration,
+    integration_status,
     tenant_dashboard,
     test_jira_integration,
     test_slack_integration,
-    integration_status,
 )
 from . import repository as repo
+from .telemetry import setup_telemetry, start_span
 
-app = FastAPI(title="AURA API", version="0.3.0")
+app = FastAPI(title="AURA API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,18 +67,17 @@ class TenantRegisterPayload(BaseModel):
     tenant_id: str
     name: str
 
+
 class GithubSyncPayload(BaseModel):
     tenant_id: str
     repo_url: str
     branch: str | None = None
 
 
-class ResolveIncidentPayload(BaseModel):
-    resolution_notes: str
-
-
 @app.on_event("startup")
 def startup_rag_bootstrap() -> None:
+    setup_telemetry()
+    ensure_runtime_schema()
     db = SessionLocal()
     try:
         repo.ensure_integrations_schema(db)
@@ -96,10 +98,6 @@ def startup_rag_bootstrap() -> None:
         db.close()
 
 
-# ──────────────────────────────────────────────────────────────
-# Health / meta
-# ──────────────────────────────────────────────────────────────
-
 @app.get("/health")
 def health() -> dict[str, str]:
     log_event("health_check")
@@ -118,16 +116,11 @@ def metrics() -> dict[str, object]:
     return {"service": "api", **snapshot}
 
 
-# ──────────────────────────────────────────────────────────────
-# Incident endpoints
-# ──────────────────────────────────────────────────────────────
-
 @app.get("/api/incidents", response_model=list[IncidentRecord])
 def api_list_incidents(
     tenant_id: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[IncidentRecord]:
-    """List incidents. Filter by tenant_id query param when provided."""
     return list_incidents(db, tenant_id=tenant_id)
 
 
@@ -150,125 +143,147 @@ async def submit_incident(
     attachment: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ) -> IncidentRecord:
-    try:
-        validate_description(description)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    file_meta: FileMeta | None = None
-    file_bytes: bytes | None = None
-    has_file = attachment is not None
-    if attachment is not None:
-        file_bytes = await attachment.read()
+    with start_span("api.submit_incident", **{"tenant.id": tenant_id}):
         try:
-            validate_file(attachment.content_type, len(file_bytes))
+            validate_description(description)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        file_meta = FileMeta(
-            filename=attachment.filename or "unknown",
-            content_type=attachment.content_type or "application/octet-stream",
-            size_bytes=len(file_bytes),
-        )
 
-    incident_id = create_incident_id()
-    ensure_tenant(db, tenant_id=tenant_id)
-    log_event("incident_ingested", incident_id=incident_id, tenant_id=tenant_id, has_file=has_file)
+        incident_id = create_incident_id()
+        ensure_tenant(db, tenant_id=tenant_id)
 
-    duplicate = find_duplicate_incident(db, tenant_id=tenant_id, description=description)
-    if duplicate:
-        triage = duplicate.triage.model_copy(deep=True)
-        triage.is_duplicate = True
-        triage.duplicate_of_incident_id = duplicate.incident_id
-        triage.dedup_confidence = 0.98
-        triage.technical_summary = (
-            f"Deduplicated incident linked to {duplicate.incident_id}. "
-            f"{triage.technical_summary}"
-        )
-        dedup_note = NotificationRecord(
-            channel="team_communicator",
-            status="sent",
-            detail=f"Deduplicated with {duplicate.incident_id}; skipped new ticket/alert.",
-        )
+        file_meta: FileMeta | None = None
+        attachment_record: AttachmentRecord | None = None
+        has_file = attachment is not None
+
+        if attachment is not None:
+            file_bytes = await attachment.read()
+            content_type = attachment.content_type or "application/octet-stream"
+            try:
+                log_event(
+                    "attachment_received",
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    attachment_type=content_type.lower(),
+                )
+                safe_filename = validate_attachment(
+                    filename=attachment.filename,
+                    content_type=attachment.content_type,
+                    size_bytes=len(file_bytes),
+                    content_bytes=file_bytes,
+                )
+                log_event(
+                    "attachment_validated",
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    attachment_type=content_type.lower(),
+                )
+            except ValueError as exc:
+                log_event(
+                    "attachment_rejected",
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    attachment_type=content_type.lower(),
+                    error=str(exc),
+                )
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            storage_path = persist_attachment(
+                incident_id=incident_id,
+                filename=safe_filename,
+                content_bytes=file_bytes,
+            )
+            attachment_kind = "image" if content_type.startswith("image/") else "text"
+            attachment_record = AttachmentRecord(
+                attachment_type=attachment_kind,
+                attachment_filename=safe_filename,
+                attachment_mime_type=content_type,
+                attachment_size_bytes=len(file_bytes),
+                attachment_storage_path=storage_path,
+                attachment_used=False,
+            )
+            file_meta = FileMeta(
+                filename=safe_filename,
+                content_type=content_type,
+                size_bytes=len(file_bytes),
+            )
+            log_event(
+                "attachment_saved",
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                attachment_type=content_type.lower(),
+            )
+
+        log_event("incident_ingested", incident_id=incident_id, tenant_id=tenant_id, has_file=has_file)
+
+        duplicate = find_duplicate_incident(db, tenant_id=tenant_id, description=description)
+        if duplicate:
+            triage = duplicate.triage.model_copy(deep=True)
+            triage.is_duplicate = True
+            triage.duplicate_of_incident_id = duplicate.incident_id
+            triage.dedup_confidence = 0.98
+            triage.technical_summary = (
+                f"Deduplicated incident linked to {duplicate.incident_id}. "
+                f"{triage.technical_summary}"
+            )
+            dedup_note = NotificationRecord(
+                channel="team_communicator",
+                status="sent",
+                detail=f"Deduplicated with {duplicate.incident_id}; skipped new ticket/alert.",
+            )
+            incident = IncidentRecord(
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                reporter_email=reporter_email,
+                description=description,
+                status="open",
+                processing_state="triaged",
+                file_meta=file_meta,
+                attachment=attachment_record,
+                triage=triage,
+                ticket=duplicate.ticket,
+                notifications=[dedup_note],
+                related_links=[],
+            )
+            save_incident(db, incident)
+            log_event("incident_deduplicated", incident_id=incident_id, tenant_id=tenant_id, duplicate_of=duplicate.incident_id)
+            return incident
+
         incident = IncidentRecord(
             incident_id=incident_id,
             tenant_id=tenant_id,
             reporter_email=reporter_email,
             description=description,
+            status="open",
+            processing_state="submitted",
             file_meta=file_meta,
-            triage=triage,
-            ticket=duplicate.ticket,
-            notifications=[dedup_note],
+            attachment=attachment_record,
+            triage=queued_triage_output(description),
+            ticket=pending_ticket_record(),
+            notifications=[],
+            related_links=[],
         )
         save_incident(db, incident)
-        log_event(
-            "incident_deduplicated",
+        enqueue_job(
+            db,
+            JOB_TYPE_PROCESS_INCIDENT,
+            {"incident_id": incident_id},
             incident_id=incident_id,
-            tenant_id=tenant_id,
-            duplicate_of=duplicate.incident_id,
         )
-        return incident
-
-    triage = run_triage(
-        tenant_id=tenant_id,
-        description=description,
-        has_file=has_file,
-        attachment_filename=file_meta.filename if file_meta else None,
-        attachment_content_type=file_meta.content_type if file_meta else None,
-        attachment_bytes=file_bytes,
-        db=db,
-    )
-    log_event("incident_triaged", incident_id=incident_id, severity=triage.severity, service=triage.affected_service, llm_usage=triage.llm_usage)
-
-    ticket = create_ticket(
-        incident_id=incident_id,
-        triage=triage,
-        tenant_id=tenant_id,
-        description=description,
-        db=db,
-    )
-    team_notification = notify_team(
-        incident_id=incident_id,
-        ticket=ticket,
-        triage=triage,
-        tenant_id=tenant_id,
-        reporter_email=reporter_email,
-        description=description,
-        db=db,
-    )
-
-    incident = IncidentRecord(
-        incident_id=incident_id,
-        tenant_id=tenant_id,
-        reporter_email=reporter_email,
-        description=description,
-        file_meta=file_meta,
-        triage=triage,
-        ticket=ticket,
-        notifications=[team_notification],
-    )
-    save_incident(db, incident)
-    return incident
+        return get_incident(db, incident_id) or incident
 
 
 @app.post("/api/incidents/{incident_id}/resolve", response_model=IncidentRecord)
 def api_resolve_incident(
     incident_id: str,
-    payload: ResolveIncidentPayload,
     db: Session = Depends(get_db),
 ) -> IncidentRecord:
-    notes = payload.resolution_notes.strip()
-    if len(notes) < 10:
-        raise HTTPException(status_code=400, detail="resolution_notes must be at least 10 characters")
+    with start_span("api.resolve_incident", **{"incident.id": incident_id}):
+        incident = resolve_incident(db, incident_id)
+        if not incident:
+            raise HTTPException(status_code=404, detail="incident not found")
+        return incident
 
-    incident = resolve_incident(db, incident_id, resolution_notes=notes)
-    if not incident:
-        raise HTTPException(status_code=404, detail="incident not found")
-    return incident
-
-
-# ──────────────────────────────────────────────────────────────
-# Tenant endpoints
-# ──────────────────────────────────────────────────────────────
 
 @app.post("/api/tenants/register", response_model=TenantRecord)
 def api_register_tenant(
@@ -393,6 +408,15 @@ def _assert_tenant_admin(tenant_id: str, provided_key: str | None) -> None:
     raise HTTPException(status_code=403, detail="invalid tenant admin credentials")
 
 
+@app.post("/api/auth/verify")
+def api_auth_verify(
+    tenant_id: str = Header(..., alias="x-tenant-id"),
+    x_tenant_admin_key: str = Header(...),
+) -> dict:
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    return {"status": "ok", "tenant_id": tenant_id}
+
+
 @app.get("/api/tenants/{tenant_id}/integrations", response_model=TenantIntegrationsStatus)
 def api_tenant_integrations_status(
     tenant_id: str,
@@ -417,10 +441,7 @@ def api_save_slack_integration(
     if not tenant:
         raise HTTPException(status_code=404, detail="tenant not found")
     _assert_tenant_admin(tenant_id, x_tenant_admin_key)
-    try:
-        save_slack_integration(db, tenant_id=tenant_id, payload=payload.model_dump())
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    save_slack_integration(db, tenant_id=tenant_id, payload=payload.model_dump())
     return {"ok": True}
 
 
@@ -435,10 +456,7 @@ def api_save_jira_integration(
     if not tenant:
         raise HTTPException(status_code=404, detail="tenant not found")
     _assert_tenant_admin(tenant_id, x_tenant_admin_key)
-    try:
-        save_jira_integration(db, tenant_id=tenant_id, payload=payload.model_dump())
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    save_jira_integration(db, tenant_id=tenant_id, payload=payload.model_dump())
     return {"ok": True}
 
 
@@ -452,10 +470,7 @@ def api_test_slack_integration(
     if not tenant:
         raise HTTPException(status_code=404, detail="tenant not found")
     _assert_tenant_admin(tenant_id, x_tenant_admin_key)
-    try:
-        ok, detail = test_slack_integration(db, tenant_id=tenant_id)
-    except RuntimeError as exc:
-        ok, detail = False, str(exc)
+    ok, detail = test_slack_integration(db, tenant_id=tenant_id)
     return IntegrationTestResult(provider="slack", ok=ok, detail=detail)
 
 
@@ -470,16 +485,5 @@ def api_test_jira_integration(
     if not tenant:
         raise HTTPException(status_code=404, detail="tenant not found")
     _assert_tenant_admin(tenant_id, x_tenant_admin_key)
-    try:
-        ok, detail = test_jira_integration(db, tenant_id=tenant_id, create_issue=create_issue)
-    except RuntimeError as exc:
-        ok, detail = False, str(exc)
+    ok, detail = test_jira_integration(db, tenant_id=tenant_id, create_issue=create_issue)
     return IntegrationTestResult(provider="jira", ok=ok, detail=detail)
-
-@app.post("/api/auth/verify")
-def api_auth_verify(
-    tenant_id: str = Header(..., alias="x-tenant-id"),
-    x_tenant_admin_key: str = Header(...)
-) -> dict:
-    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
-    return {"status": "ok", "tenant_id": tenant_id}
