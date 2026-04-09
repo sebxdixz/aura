@@ -267,6 +267,30 @@ def score_severity(
     primary_service: str,
 ) -> SeverityAssessment:
     combined = _combined_text(normalized)
+    signal_count = _incident_signal_count(
+        normalized=normalized,
+        entities=entities,
+        retrieved_context=retrieved_context,
+        primary_service=primary_service,
+    )
+    if signal_count == 0:
+        return SeverityAssessment(
+            label="low",
+            score=0,
+            impact_score=0,
+            scope_score=0,
+            reporter_score=0,
+            error_code_score=0,
+            component_score=0,
+            security_risk=False,
+            workaround_present=False,
+            rationale="No substantive incident signals were detected in the description, attachment, or retrieved context.",
+            reasoning=(
+                "AURA did not detect a concrete affected surface, observed error, service signal, "
+                "or supporting evidence. Severity remains 0/100 until a real incident signal is present."
+            ),
+        )
+
     impact_score = 0
     if entities.incident_type in {"payment_failure", "availability", "security"}:
         impact_score += 18
@@ -281,11 +305,11 @@ def score_severity(
         "small_subset": 8,
         "single_user_report": 4,
         "critical_flow_unconfirmed_scope": 9,
-        "unknown": 5,
+        "unknown": 0,
     }
-    scope_score = scope_score_map.get(entities.user_scope, 5)
+    scope_score = scope_score_map.get(entities.user_scope, 0)
 
-    reporter_score = 2
+    reporter_score = 0
     if normalized.reporter_type == "internal_support":
         reporter_score += 4
     elif normalized.reporter_type == "merchant":
@@ -299,10 +323,14 @@ def score_severity(
     elif entities.observed_error != "unknown":
         error_code_score += 6
 
-    component_score = 6
+    component_score = 0
     if primary_service in {"payment-service", "checkout-service", "auth-service"}:
         component_score += 7
-    if normalized.attachment_present and normalized.attachment_type in {"image", "log", "text", "json"}:
+    if normalized.attachment_present and (
+        normalized.attachment_text
+        or normalized.attachment_summary
+        or normalized.attachment_signals
+    ):
         component_score += 3
     if retrieved_context.retrieved_paths:
         component_score += min(6, len(retrieved_context.retrieved_paths))
@@ -363,6 +391,21 @@ def route_incident(
     normalized: NormalizedIncidentInput,
     retrieved_context: RetrievedContext,
 ) -> RoutingDecision:
+    signal_count = _incident_signal_count(
+        normalized=normalized,
+        entities=entities,
+        retrieved_context=retrieved_context,
+        primary_service=primary_service,
+    )
+    if signal_count == 0:
+        return RoutingDecision(
+            target_team="Needs Review",
+            primary_service="web-app",
+            secondary_candidates=[],
+            routing_confidence=0.0,
+            reasoning="No substantive incident evidence was detected, so AURA did not force a routing decision.",
+        )
+
     target_team = TEAM_BY_SERVICE.get(primary_service, "Platform/SRE")
     if entities.affected_surface == "payment" or primary_service == "payment-service":
         target_team = "Payments"
@@ -403,6 +446,37 @@ def route_incident(
         routing_confidence=routing_confidence,
         reasoning=" ".join(reasoning_parts),
     )
+
+
+def _incident_signal_count(
+    *,
+    normalized: NormalizedIncidentInput,
+    entities: ExtractedEntities,
+    retrieved_context: RetrievedContext,
+    primary_service: str,
+) -> int:
+    count = 0
+    if entities.incident_type != "unknown":
+        count += 1
+    if entities.affected_surface != "unknown":
+        count += 1
+    if entities.observed_error != "unknown":
+        count += 1
+    if entities.business_impact_signals:
+        count += 1
+    if entities.security_risk_signals:
+        count += 1
+    if entities.urgency_signals:
+        count += 1
+    if normalized.attachment_signals:
+        count += 1
+    if normalized.attachment_text or normalized.attachment_summary:
+        count += 1
+    if retrieved_context.retrieved_paths:
+        count += 1
+    if primary_service != "web-app" and any(keyword in _combined_text(normalized) for keyword in SERVICE_KEYWORDS.get(primary_service, ())):
+        count += 1
+    return count
 
 
 def validate_triage_output(output: TriageOutput) -> TriageOutput:
