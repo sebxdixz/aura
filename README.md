@@ -1,53 +1,70 @@
-# AURA (Uptime & Resolution Agent) 🚀
+# AURA
 
-**AURA** is an advanced, multi-tenant Site Reliability Engineering (SRE) Agent designed to ingest incident reports, perform automated intelligent triage, and orchestrate resolution workflows. Built for the **AgentX Hackathon 2026**, AURA bridges the gap between incident creation and resolution by dynamically analyzing codebase context, deduping issues, extracting multimodal inputs, and securely communicating with tools like Jira and Slack.
+AURA is a multi-tenant SRE incident intake and triage platform for e-commerce teams.
+It receives customer incident reports, analyzes them with LLM + RAG context, and routes actions to Jira and Slack.
 
----
+## Current Functionalities (Implemented)
 
-## 📖 Project Summary
+- Login and register flow from `http://localhost:3000/`
+- Multi-tenant data isolation by `tenant_id`
+- Unique public intake URL per tenant: `/intake/{tenant}`
+- Public customer intake separated from admin dashboard
+- Multimodal incident intake: text, image, pdf, audio, and logs
+- Two-stage LLM pipeline (multimodal extraction + deeper analysis)
+- RAG over tenant-scoped vector database (`pgvector`)
+- GitHub repository indexing directly into vector DB (no local clone required)
+- Jira integration (tenant config + test + ticket creation in flow)
+- Slack integration (tenant config + test + team notifications in flow)
+- ReAct orchestration path through MCP bridge, with fallback path
+- Incident resolution workflow with mandatory resolution notes
+- Incident token usage and USD cost visible in dashboard incident views
+- Bilingual UI support (ES/EN) on welcome/dashboard/intake/thanks flows
+- Observability endpoints for metrics, audit logs, and tenant insights
 
-When an incident occurs, AURA acts as the first line of defense:
-1. **Ingest**: Receives reports via a brutalist, agency-grade UI supporting Multimodal inputs (Screenshots, PDFs, Audio, Text).
-2. **Retrieve Context (RAG)**: Dynamically runs Vector Semantic Search (`pgvector`) against the synchronized GitHub E-Commerce codebase to pinpoint the buggy code.
-3. **AI Triage**: Uses a Dual-Stage Orchestration pipeline (OpenRouter) to score severity mathematically, find the root cause, and propose CLI/code fixes.
-4. **Action (MCP)**: Utilizes the Anthropic **Model Context Protocol (MCP)** via a custom, secure Node.js HTTP bridge to orchestrate ticketing (Jira/Linear) and team alerts (Slack/Teams).
-5. **Insights**: Saves every token, cost (USD) and meta-usage into a robust PostgreSQL Audit Log, surfacing live metrics to a secure Administration Dashboard.
+## Main Routes
 
----
+- `GET /` -> welcome and onboarding
+- `GET /dashboard` -> admin dashboard (tenant operator)
+- `GET /intake/{tenant}` -> public intake form (customer side)
+- `GET /thanks` -> confirmation page after intake submission
 
-## 🏗️ Architecture Overview
+## End-to-End Flow
 
-AURA is implemented as a containerized, decoupled microservice architecture ensuring true B2B scalability.
+1. Customer submits incident from `/intake/{tenant}` with optional files.
+2. API performs guardrails and multimodal extraction.
+3. API retrieves tenant RAG context from vector DB.
+4. API generates triage output (severity, summary, affected service, proposed fix).
+5. ReAct/MCP or direct integrations create Jira ticket and notify Slack.
+6. Incident appears in tenant dashboard with status, triage data, token/cost.
+7. Operator resolves incident with mandatory resolution notes.
+8. Reporter notification step is executed (real or mocked by environment).
 
-- **Frontend (Nginx / Vanilla JS / CSS)**: Unified frontend server with route-level split: `"/"` welcome + onboarding, `"/dashboard"` for protected tenant admin, and `"/intake/{tenant}"` for public incident intake.
-- **Backend (FastAPI / Python 3.11)**: The core AI brain handling deduplication, PostgreSQL integration (`pgvector`), RAG GitHub cloning, and OpenRouter hybrid-LLM calls (`google/gemini-2.5-flash` for extraction + `openai/gpt-4o-mini` for ReAct).
-- **Tooling Proxy (Node.js MCP Bridge)**: Completely isolates external LLM execution from the system. It safely routes MCP tool calls via standard `stdio` to Anthropic's official `@modelcontextprotocol/server-slack` and `server-atlassian` without exposing environment security risks to the Python container.
-- **Database (PostgreSQL 16 + pgvector)**: Handles both Vector Storage for semantic code search, and standard relational storage for Multi-Tenant `IncidentRecords`, `TenantRecords`, and `AuditLogs` tracking.
+## Tech Stack
 
----
+- Frontend: Nginx + Vanilla HTML/CSS/JS (single container, route split)
+- API: FastAPI (Python)
+- Database: PostgreSQL 16 + pgvector
+- LLM gateway: OpenRouter/OpenAI integration layer
+- Tool orchestration: MCP bridge (Node.js) for Jira/Slack tools
+- Orchestration: Docker Compose
+- E2E tests: Playwright
 
-## 🛠️ Setup Instructions
+## Local Run
 
-> Note: For a detailed step-by-step, see [QUICKGUIDE.md](./QUICKGUIDE.md).
+1. Copy environment template:
+   - `cp .env.example .env`
+2. Set required vars in `.env`:
+   - `OPENROUTER_API_KEY` (or `OPENAI_API_KEY`)
+   - `TENANT_ADMIN_KEY`
+3. Start stack:
+   - `docker compose up --build`
+4. Open:
+   - `http://localhost:3000/`
 
-### Prerequisites
-- Docker and Docker Compose installed.
-- Valid API Keys (OpenRouter OR OpenAI).
+## Documentation Map
 
-### To Run
-1. Clone this repository.
-2. Copy the `.env.example` file to create your own `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-3. Fill out the required LLM API keys (`OPENROUTER_API_KEY` or `OPENAI_API_KEY`) and your `TENANT_ADMIN_KEY`.
-4. Fire up the orchestration using Docker Compose:
-   ```bash
-   docker compose up --build
-   ```
-5. Access the platform:
-   - **Welcome / Onboarding**: `http://localhost:3000/`
-   - **Admin Dashboard**: `http://localhost:3000/dashboard`
-   - **Public Intake**: `http://localhost:3000/intake/{tenant}`
-
-*(For full documentation, please review all `.md` files included in the repository).*
+- [QUICKGUIDE.md](./QUICKGUIDE.md): fast setup + smoke validation
+- [BACKLOG.md](./BACKLOG.md): prioritized work and delivery status
+- [AGENTS_USE.md](./AGENTS_USE.md): agent design and execution details
+- [MCP.md](./MCP.md): Jira/Slack integration and MCP setup details
+- [SCALING.md](./SCALING.md): scaling assumptions and strategy

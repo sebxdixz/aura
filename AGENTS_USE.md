@@ -1,108 +1,148 @@
-# AGENTS_USE.md
+# AGENTS_USE
 
-## 1. Agent Overview and Tech Stack
-AURA is a multi-tenant SRE incident intake and triage platform for e-commerce operations.  
-Core stack: FastAPI (Python), PostgreSQL + pgvector, OpenRouter (multimodal + reasoning models), MCP bridge (Node.js) for Jira/Slack tools, one Nginx frontend with route-level split (welcome + public intake + admin dashboard), Docker Compose orchestration, and Playwright E2E validation.
+## 1. Agent overview and tech stack
 
-## 2. Agents and Capabilities
-### Agent A: Multimodal Ingestion Agent
-- Accepts text + files (`pdf`, `image`, `audio`, logs).
-- Extracts/normalizes incident facts into structured triage fields.
-- Produces technical summary inputs for downstream analysis.
+AURA is a multi-tenant SRE incident intake and triage platform for e-commerce operations.
+Stack:
 
-### Agent B: Analysis and Triage Agent
-- Enriches incident context with RAG retrieval from tenant-scoped vector store.
-- Computes severity, RCA, proposed fix, and runbook suggestions.
-- Handles duplicate incident detection.
+- API: FastAPI (Python)
+- DB: PostgreSQL + pgvector
+- LLM orchestration: OpenRouter/OpenAI adapters
+- Tool execution: MCP bridge (Node.js) for Jira/Slack
+- Web: Single Nginx frontend with route split (`/`, `/dashboard`, `/intake/{tenant}`)
+- Runtime: Docker Compose
+- Validation: Playwright E2E
 
-### Agent C: ReAct Orchestrator Agent
-- Plans operational actions (ticket + team notification).
-- Executes Jira/Slack actions through MCP tools.
-- Falls back to direct/mocked integrations if MCP path fails.
+Implemented platform features snapshot:
 
-## 3. Architecture, Orchestration, and Error Handling
-- Flow: `submit -> ingest -> triage -> ticket -> notify team -> resolve -> notify reporter`.
-- Service boundaries:
-  - `web` (single entrypoint: welcome + public intake + admin operations routes).
-  - `api` (agents + orchestration + integrations).
-  - `db` (incidents, audit logs, vectors).
-  - `mcp_bridge` (HTTP-to-MCP tool execution).
-- Error handling:
-  - Guardrail validation errors return `400`.
-  - Integration failures trigger retry + fallback providers.
-  - ReAct/MCP failures are logged and degraded gracefully to non-MCP path.
-  - Audit write failures do not block main transaction flow.
+- Login/register
+- Multi-tenant isolation
+- Tenant-specific public intake URL
+- Tenant-scoped RAG
+- GitHub indexing to vector DB
+- Jira and Slack integrations
+- ES/EN UI language support
 
-## 4. Context Engineering Approach
-- Multi-source context package:
-  - User report text.
-  - Attachment-derived text/evidence.
-  - Tenant-scoped retrieved code chunks from pgvector.
-- Prompt strategy:
-  - Stage 1 multimodal extraction (fast model).
-  - Stage 2 deeper SRE reasoning (stronger model) with structured JSON output.
-- Tenant isolation in context:
-  - Retrieval queries are filtered by `tenant_id`.
-  - RAG sync/reindex endpoints require tenant admin credentials.
+## 2. Agents and their capabilities
 
-## 5. Use Cases with Step-by-Step Flows
-### Use Case A: Public customer reports an incident
-1. Customer opens `https://<host>/intake/{tenant}`.
-2. Submits description and optional file evidence.
-3. AURA ingests and triages automatically.
-4. A ticket is created (real or mock).
-5. Team is notified (real or mock).
-6. Customer gets confirmation page (`/thanks`).
+Agent 1 - Multimodal Ingestion Agent
 
-### Use Case B: Ops team manages incidents
-1. Admin logs in at `https://<host>/dashboard`.
-2. Reviews dashboard metrics and incident list.
-3. Resolves incident from dashboard.
-4. Reporter notification is sent automatically.
+- Accepts text and optional files (image, pdf, audio, logs)
+- Normalizes inputs into structured incident evidence
+- Produces extraction output for triage stage
 
-### Use Case C: Tenant admin syncs codebase into RAG
-1. Admin opens dashboard settings.
-2. Runs GitHub sync (tenant + repo URL + admin key).
-3. API ingests repository directly into vector DB (no local git clone).
-4. Dashboard shows RAG index status (repo/chunk count/state).
+Agent 2 - Analysis and Triage Agent
 
-## 6. Observability (Logging, Tracing, Metrics) — Evidence
-- Structured logs:
-  - Emitted via `log_event(...)` in `api/app/observability.py`.
-  - Key stages include `incident_ingested`, `incident_triaged`, `ticket_created`, `team_notified`, `incident_resolved`, `reporter_notified`.
-- Metrics endpoint:
-  - `GET /metrics` returns stage and severity counters.
-- Tenant-level audit and insights:
-  - `GET /api/tenants/{tenant_id}/audit-logs`
-  - `GET /api/tenants/{tenant_id}/insights/summary`
-- Evidence from tests:
-  - `npm run test:e2e:api` validates full API flow, multimodal intake, guardrails, dedup, RAG enrichment.
-  - `npm run test:e2e:web` validates welcome + intake + dashboard separation flow.
+- Retrieves tenant-scoped code context from vector DB
+- Computes severity, technical summary, affected service, and fix proposal
+- Handles dedup and runbook suggestion logic
 
-## 7. Security and Guardrails — Evidence
-- Input guardrails (`api/app/guardrails.py`):
-  - Prompt-injection pattern blocking.
-  - Max description length.
-  - File type allowlist and size limits.
-- Tool safety:
-  - Strict tool allowlist (`create_ticket`, `notify_team`, `notify_reporter`).
+Agent 3 - ReAct Orchestrator Agent
+
+- Plans tool actions for ticketing and notifications
+- Executes Jira/Slack actions through MCP bridge
+- Falls back to direct/mock providers on bridge/tool errors
+
+## 3. Architecture, orchestration, and error handling
+
+Flow:
+
+`submit -> ingest -> triage -> ticket -> notify team -> resolve -> notify reporter`
+
+Service boundaries:
+
+- `web`: welcome, intake, dashboard UI
+- `api`: business logic, RAG, agent pipeline, integration routing
+- `db`: incidents, tenant settings, audit logs, vector chunks
+- `mcp_bridge`: HTTP to MCP tool call adapter
+
+Error handling:
+
+- Guardrails and validation return structured `4xx`
+- Integration failures trigger fallback path
+- MCP errors degrade to direct/mock integration path
+- Audit/telemetry failures do not block primary incident transaction
+
+## 4. Context engineering approach
+
+- Context package includes:
+  - customer text input
+  - parsed file evidence
+  - tenant-scoped retrieved code chunks from pgvector
+- Two-stage prompting:
+  - Stage A: fast multimodal extraction
+  - Stage B: stronger reasoning model for final triage JSON
 - Tenant isolation:
-  - Data partition by `tenant_id` in incidents/audit/RAG retrieval.
-  - Admin-protected endpoints require `x-tenant-admin-key`.
-- MCP boundary:
-  - API does not execute arbitrary shell for Jira/Slack; calls MCP bridge over controlled HTTP interface.
-- Evidence from tests:
-  - Prompt-injection rejection tested in `tests/e2e/api-contract.spec.js`.
+  - retrieval filters by `tenant_id`
+  - sync/index endpoints require tenant admin key
 
-## 8. Scalability Summary
-- Stateless API + horizontal scaling readiness.
-- PostgreSQL persistence with indexed tenant queries.
-- pgvector for semantic retrieval with tenant filtering.
-- Decoupled integration layer (providers + MCP + fallback modes).
-- Separate public/admin web surfaces for clear traffic segmentation.
+## 5. Use cases with step-by-step flows
 
-## 9. Lessons Learned and Team Reflections
-- Separating public intake from admin dashboard reduced UX confusion and security risk.
-- Two-stage LLM design improved reliability: fast extraction + stronger analysis.
-- MCP-based tool execution gave cleaner integration boundaries and safer operations.
-- E2E tests were critical to stabilize rapid parallel development and prevent regressions.
+Use case A - Customer reports incident
+
+1. Customer opens `/intake/{tenant}`.
+2. Customer submits text plus optional file evidence.
+3. AURA ingests, validates, and triages.
+4. AURA creates ticket and notifies team.
+5. Customer sees confirmation page.
+
+Use case B - Operator manages incidents
+
+1. Operator logs in at `/dashboard`.
+2. Reviews incidents and triage details.
+3. Resolves incident with mandatory resolution notes.
+4. Reporter notification step is triggered.
+
+Use case C - Tenant admin indexes codebase
+
+1. Admin opens dashboard settings.
+2. Submits GitHub repository URL for sync.
+3. API indexes repository into tenant vector DB.
+4. Dashboard shows index status and chunk count.
+
+## 6. Observability - logging, tracing, metrics (evidence)
+
+Evidence endpoints:
+
+- `GET /metrics`
+- `GET /api/tenants/{tenant_id}/audit-logs`
+- `GET /api/tenants/{tenant_id}/insights/summary`
+
+Evidence in behavior:
+
+- Incident lifecycle events are persisted with tenant and incident context.
+- Dashboard surfaces incident-level token usage and cost in USD.
+
+Evidence in tests:
+
+- `tests/e2e/api-contract.spec.js`
+- `tests/e2e/web-intake.spec.js`
+
+## 7. Security and guardrails (evidence)
+
+Evidence in code and runtime behavior:
+
+- Input guardrails for malicious prompt patterns
+- File type and size controls for uploads
+- Strict tenant boundary by `tenant_id`
+- Admin endpoints protected by `x-tenant-admin-key`
+- Tool calls constrained by MCP bridge endpoint and allowed operations
+
+Evidence in tests:
+
+- Prompt-injection rejection covered in API E2E tests
+- Tenant-isolated workflows validated in web/API E2E paths
+
+## 8. Scalability summary
+
+- Stateless API supports horizontal scaling.
+- PostgreSQL stores transactional and vector data with tenant filters.
+- Integration layer is decoupled from core incident flow.
+- Single frontend entrypoint with route split simplifies deployment and ops.
+
+## 9. Lessons learned and team reflections
+
+- Public intake and admin dashboard must be separated for safety and UX clarity.
+- Two-stage LLM design improves reliability compared to one-shot reasoning.
+- Tenant-scoped RAG is critical for useful triage in real e-commerce contexts.
+- Fallback and mock paths are required for stable demos under API constraints.

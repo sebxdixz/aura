@@ -1,53 +1,79 @@
-# AURA Quick Setup Guide ⚡
+# AURA Quick Guide
 
-Follow this guide to spin up the local microservices container architecture and run the E2E Demo natively.
+This guide is optimized for fast local validation and AI-first review.
 
-## 1. Clone the project
+## 1. Prerequisites
 
-Open up your terminal and clone the repository locally:
+- Docker + Docker Compose
+- API key for at least one provider:
+  - `OPENROUTER_API_KEY` (recommended), or
+  - `OPENAI_API_KEY`
 
-```bash
-git clone <repository_url>
-cd aura
-```
-
-## 2. Environment Variables
-
-Create your environment configuration by copying the template file:
+## 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` in your favorite editor. The main thing you need to authorize is your API provider for the Hybrid Multi-Modal Pipeline. AURA gracefully supports both standalone **OpenAI** integration and **OpenRouter** orchestrations.
+Minimum values to set:
 
-We highly recommend utilizing **OpenRouter** to spin up the multi-staged (Gemini 2.5 + GPT) default pipeline.
-
-Inside the `.env` file, fill the following key mapping:
 ```env
-OPENROUTER_API_KEY=sk-or-v1-xxx...
 TENANT_ADMIN_KEY=hackathon2024
+OPENROUTER_API_KEY=sk-or-v1-...
 ```
-*(If you do not have OpenRouter, simply leave it blank and fill out the `OPENAI_API_KEY=sk-...` field instead. The LLM processor will gracefully fallback automatically).*
 
-## 3. Build & Run Containers
+Optional integration and mode controls are in `.env.example`.
 
-Our docker architecture builds out the Web UI, API Backend, Node proxy and Databases simultaneously.
+## 3. Start the Platform
 
 ```bash
 docker compose up --build
 ```
-*Wait a few minutes while Alpine packages and Python libraries compile internally and standard PostgreSQL instances initialize.*
 
-## 4. Test the End-to-End Workflow
+Main URL:
 
-AURA serves one unified web entrypoint:
+- `http://localhost:3000/`
 
-1. **Welcome (Port 3000):** Navigate to `http://localhost:3000`. From there you can login/register your tenant and understand the platform flow.
-2. **Public Intake:** Use `http://localhost:3000/intake/{tenant}` for customer incident reports.
-3. **Admin Dashboard:** Use `http://localhost:3000/dashboard`.
-   - Click `Demo Judge` in dashboard login or authenticate with your tenant and `TENANT_ADMIN_KEY`.
-   - Explore incident statistics and use Settings to sync GitHub into tenant-scoped Vector RAG.
+## 4. Core URLs
 
-## Troubleshooting
-If a system rate-limit hits or you do not have access to Jira/Slack official webhook tokens, don't worry! By default `.env` forces `MOCK_MODE=false` combined with predefined `mock-slack` fallback modes. AURA will intercept execution requests and mock the internal process returning 200 OP codes to demonstrate the workflow gracefully rather than crashing.
+- Welcome: `http://localhost:3000/`
+- Dashboard: `http://localhost:3000/dashboard`
+- Public Intake: `http://localhost:3000/intake/{tenant}`
+- Thanks page: `http://localhost:3000/thanks`
+
+## 5. Smoke Test Checklist (Feature Validation)
+
+1. Register a tenant from welcome page.
+2. Login with `tenant_id` + `TENANT_ADMIN_KEY`.
+3. Confirm dashboard loads tenant metrics and incidents.
+4. In settings, configure Jira and Slack credentials and run test buttons.
+5. In settings, run GitHub sync to index repository into tenant RAG.
+6. Open public intake URL `/intake/{tenant}`.
+7. Submit incident with text and optionally one file:
+   - image, pdf, audio, or log/text file
+8. Confirm incident appears in dashboard with triage fields.
+9. Confirm incident shows token usage and USD cost.
+10. Resolve incident and provide resolution notes.
+11. Confirm ticket/notification outputs in dashboard result log and provider systems (or mock responses).
+
+## 6. What the Reviewer Should See
+
+- Login/register flow is active.
+- Multi-tenant separation is active.
+- Public intake and private dashboard are separated.
+- RAG is tenant-scoped and reports indexed chunk count.
+- GitHub indexing to vector DB works from dashboard settings.
+- Jira and Slack are configurable per tenant and testable.
+- UI supports ES/EN toggles.
+
+## 7. Troubleshooting
+
+- Dashboard without data:
+  - Ensure valid login session (`tenant` + admin key).
+  - Hard refresh `/dashboard`.
+- Jira test returns issue type error:
+  - Set valid `issue_type` for the selected project.
+- Slack test does not post:
+  - Verify webhook/token/channel and that bot is invited to channel.
+- No external credentials available:
+  - Use mock/fallback mode for demo continuity.

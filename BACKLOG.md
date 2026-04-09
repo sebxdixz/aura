@@ -4,52 +4,36 @@ Backlog operativo para construir AURA con foco en entrega de hackathon.
 
 ---
 
-## Estado Actual (2026-04-08)
+## Snapshot para Revision AI (2026-04-09)
 
-- Estructura base creada: `web`, `api`, `db` (`web` unificado con rutas `/`, `/dashboard`, `/intake/{tenant}`).
-- Stack validado con `docker compose up --build` (`web`, `api`, `db` en estado healthy/up).
-- API E2E implementada con endpoints de submit/list/get/resolve.
-- Frontend en evolucion paralela por otro agente.
-- Guardrails basicos activos (input, archivos, allowlist de tools).
-- Persistencia real en PostgreSQL con aislamiento por `tenant_id` en queries.
-- Esquema canonico en `db/init/001_schema.sql`.
-- Observabilidad base y enriquecida en `/metrics`.
+Funcionalidades clave pedidas y estado:
+
+- [x] Login y register en welcome (`/`)
+- [x] Multi-tenant real con aislamiento por `tenant_id`
+- [x] Dashboard privado por tenant (`/dashboard`)
+- [x] Formulario publico unico por tenant (`/intake/{tenant}`)
+- [x] Ingesta multimodal (texto + imagen/pdf/audio/log)
+- [x] Pipeline LLM de dos etapas (extraccion multimodal + analisis tecnico)
+- [x] RAG con `pgvector` en la misma base Docker
+- [x] Indexacion de repositorios GitHub directo a vector DB (sin clone local)
+- [x] Integracion Jira por tenant (config + test + creacion de ticket)
+- [x] Integracion Slack por tenant (config + test + notificacion a equipo)
+- [x] Soporte multilenguaje ES/EN en UI principal
+- [x] Observabilidad (`/metrics`, audit logs, insights)
+- [x] ReAct + MCP bridge con fallback a integracion directa/mock
+
+Implementacion actual:
+
+- Arquitectura activa: `web`, `api`, `db`, `mcp_bridge` en Docker Compose.
+- Frontend unificado por rutas: `/`, `/dashboard`, `/intake/{tenant}`, `/thanks`.
+- API E2E con endpoints de submit/list/get/resolve.
+- Guardrails basicos activos para input y tool-calling.
+- Persistencia real en PostgreSQL con esquema canonico en `db/init/001_schema.sql`.
 - Endpoints de observabilidad por tenant:
   - `GET /api/tenants/{tenant_id}/audit-logs`
   - `GET /api/tenants/{tenant_id}/insights/summary`
-- RCA/Auto-Fix implementado en triage.
-- Integraciones mock con retries y fallback implementadas.
-- P2 backend implementado:
-  - deduplicacion de incidentes
-  - severity scoring fino
-  - runbook suggestions automaticas
-  - metricas enriquecidas de severidad y dedup
-- Playwright API E2E implementado y validado (`npm run test:e2e` pasa).
-- Triage multimodal cableado en backend con contexto de adjuntos:
-  - texto (`text/plain`, `text/csv`, `application/json`)
-  - PDF (`application/pdf`)
-  - audio (`audio/wav`, `audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/x-m4a`, `audio/webm`, `audio/ogg`)
-- RAG operativo sobre codebase e-commerce con vector DB en el mismo Docker:
-  - Postgres + `pgvector` en servicio `db`
-  - indexado de chunks en tabla `code_chunks` con aislamiento por `tenant_id`
-  - retrieval en triage para enriquecer `relevant_files`
-  - sync desde GitHub directo a vector DB (sin `git clone`)
-  - endpoints de sync/reindex protegidos por credencial admin de tenant (`x-tenant-admin-key`)
-- Frontend separado por ruta en un mismo servicio `web`:
-  - `/` welcome + onboarding (login/register)
-  - `/dashboard` dashboard de operaciones
-  - `/intake/{tenant}` portal de reporte publico
-- ReAct opcional para operaciones:
-  - planificacion con OpenRouter
-  - ejecucion de acciones Jira/Slack via MCP
-  - fallback al flujo directo existente
-- MCP bridge operativo en Docker (`mcp_bridge`):
-  - endpoint HTTP interno `http://mcp_bridge:8080/invoke`
-  - adaptador de herramientas `create_issue/post_message` -> `jira_create_issue/slack_post_message`
-  - compatible con falta de credenciales (degrada con fallback controlado)
-- Pipeline LLM de dos etapas disponible por `env`:
-  - etapa 1 multimodal (`OPENROUTER_MULTIMODAL_MODEL`, default `gemini-2.5-flash`) para extraer evidencia
-  - etapa 2 analitica (`OPENROUTER_ANALYSIS_MODEL`) para construir triage tecnico final
+- RCA/Auto-Fix, deduplicacion, severity scoring y runbook suggestions activos.
+- Pipeline multimodal cableado en backend para archivos y texto.
 
 ---
 

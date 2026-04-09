@@ -13,7 +13,7 @@ Instead of downloading chunks of code or keeping text files alive in container m
 - **The Vector Load limit**: By translating arbitrary codebase lengths (GitHub clones) into mathematical embeddings and saving them alongside basic incident structures, memory issues disappear. Fast Cosine Similarity Semantic search permits processing vast repos over 1,000 files in under 100ms on a cold start while preventing the LLM's context window from hallucinating or overloading.
 
 ### The Model Context Protocol (MCP) Node Bridge
-- Anthropic’s MCP heavily defines local context servers connecting via standard I/O (console) specifically targeting user desktops (like Cursor or Claude integrations). We constructed an **HTTP-to-Stdio MCP Bridge**.
+- Anthropic's MCP heavily defines local context servers connecting via standard I/O (console) specifically targeting user desktops (like Cursor or Claude integrations). We constructed an **HTTP-to-Stdio MCP Bridge**.
 - **Scaling Decision**: In enterprise networks, standard I/O connections choke the container if multiple users request tools simultaneously. With our Node Bridge proxy deployed independently, each agent iteration acts via a stateless HTTP endpoint. If the HTTP request crashes due to timeout or LLM failure, the backend gracefully catches the Exception without bringing down the core container console.
 
 ## 2. Platform Assumptions
