@@ -34,6 +34,15 @@ LOGGER = configure_logging()
 
 
 def log_event(stage: str, incident_id: str | None = None, **extra: Any) -> None:
+    if "trace_id" not in extra:
+        try:
+            from .telemetry import current_trace_id
+
+            trace_id = current_trace_id()
+            if trace_id:
+                extra["trace_id"] = trace_id
+        except Exception:
+            pass
     STAGE_COUNTER[stage] += 1
     severity = extra.get("severity")
     if isinstance(severity, str) and severity:
@@ -44,7 +53,14 @@ def log_event(stage: str, incident_id: str | None = None, **extra: Any) -> None:
     for flag_name in ("llm_used", "fallback_used", "retrieval_empty"):
         if extra.get(flag_name) is True:
             FLAG_COUNTER[flag_name] += 1
-    for value_name in ("triage_confidence", "context_adherence_score", "triage_duration_ms", "rag_duration_ms", "llm_duration_ms"):
+    for value_name in (
+        "triage_confidence",
+        "context_adherence_score",
+        "triage_duration_ms",
+        "rag_duration_ms",
+        "llm_duration_ms",
+        "incident_process_duration_ms",
+    ):
         value = extra.get(value_name)
         if isinstance(value, (int, float)):
             VALUE_TOTALS[value_name] += float(value)
@@ -91,4 +107,11 @@ def metrics_snapshot() -> dict[str, object]:
         "related_incidents_detected_total": int(STAGE_COUNTER.get("related_incidents_linked", 0)),
         "incident_clusters_created_total": int(STAGE_COUNTER.get("cluster_assigned", 0)),
         "recurring_patterns_detected_total": int(STAGE_COUNTER.get("recurrence_detected", 0)),
+        "incident_submit_total": int(STAGE_COUNTER.get("incident_ingested", 0)),
+        "ticket_creation_failures_total": int(STAGE_COUNTER.get("ticket_creation_failed", 0)),
+        "ticket_sync_failures_total": int(STAGE_COUNTER.get("ticket_status_sync_failed", 0)),
+        "worker_jobs_running": int(STAGE_COUNTER.get("job_started", 0) - STAGE_COUNTER.get("job_completed", 0)),
+        "worker_job_retries_total": int(STAGE_COUNTER.get("job_retried", 0)),
+        "resolution_webhooks_received_total": int(STAGE_COUNTER.get("ticketing_webhook_received", 0)),
+        "avg_incident_process_duration_ms": avg("incident_process_duration_ms"),
     }

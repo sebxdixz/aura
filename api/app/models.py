@@ -102,6 +102,8 @@ class TicketRecord(BaseModel):
     status: Literal["created", "failed"] = "created"
     title: str = ""
     description: str = ""
+    external_status: str | None = None
+    last_synced_at: str | None = None
 
 
 class NotificationRecord(BaseModel):
@@ -127,6 +129,7 @@ class IncidentRecord(BaseModel):
     reporter_email: EmailStr
     description: str
     status: Literal["open", "resolved"] = "open"
+    processing_state: Literal["submitted", "processing", "triaged", "ticketed", "resolved", "failed"] = "submitted"
     created_at: str = Field(default_factory=utc_now_iso)
     resolved_at: str | None = None
     file_meta: FileMeta | None = None

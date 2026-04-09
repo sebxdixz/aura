@@ -32,6 +32,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 RUNTIME_MIGRATIONS = [
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS attachment_type VARCHAR(40)",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS processing_state VARCHAR(20) NOT NULL DEFAULT 'submitted'",
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS attachment_filename VARCHAR(255)",
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS attachment_mime_type VARCHAR(120)",
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS attachment_size_bytes INTEGER",
@@ -64,6 +65,24 @@ RUNTIME_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS idx_incident_links_tenant ON incident_links (tenant_id)",
     "CREATE INDEX IF NOT EXISTS idx_incident_links_source ON incident_links (source_incident_id)",
     "CREATE INDEX IF NOT EXISTS idx_incident_links_target ON incident_links (target_incident_id)",
+    (
+        "CREATE TABLE IF NOT EXISTS jobs ("
+        "id BIGSERIAL PRIMARY KEY, "
+        "job_type TEXT NOT NULL, "
+        "status TEXT NOT NULL DEFAULT 'queued', "
+        "payload JSONB NOT NULL, "
+        "attempts INTEGER NOT NULL DEFAULT 0, "
+        "max_attempts INTEGER NOT NULL DEFAULT 3, "
+        "run_after TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+        "locked_at TIMESTAMPTZ NULL, "
+        "locked_by TEXT NULL, "
+        "last_error TEXT NULL, "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+        ")"
+    ),
+    "CREATE INDEX IF NOT EXISTS idx_incidents_processing_state ON incidents (processing_state)",
+    "CREATE INDEX IF NOT EXISTS idx_jobs_status_run_after ON jobs (status, run_after)",
 ]
 
 

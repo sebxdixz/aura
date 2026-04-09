@@ -31,6 +31,7 @@ AURA is designed for scale, safety, and precision.
   - Admin Dashboard (`/`) protected by strict Tenant ID / Access Key login.
   - Public Intake Portal (`/intake/{tenant}`) for end-users, locked to incident submission without admin access.
 - **Backend (FastAPI + Python):** tenant logic, AI agent orchestration, and REST API.
+- **Worker (Python):** asynchronous incident processing, ticket status polling, and reporter notification jobs.
 - **MCP Bridge (Node.js):** adapter between AURA tool-calls and MCP servers (Jira + Slack).
 - **MCP HTTP Bridge (Node.js/Express):** a custom microservice acting as an HTTP-to-Stdio proxy, allowing the containerized FastAPI backend to natively connect with Atlassian and Slack Model Context Protocol (MCP) console servers `npx` binaries.
 - **Database (PostgreSQL):** tenant isolation, incident history, and metrics.
@@ -78,6 +79,9 @@ AURA is designed for scale, safety, and precision.
   - dedup metadata (`is_duplicate`, `duplicate_of_incident_id`, `dedup_confidence`)
   - model execution marker (`llm_mode`: mock/live/fallback)
 - Structured observability through logs and `GET /metrics`.
+- Asynchronous processing with a persisted job queue and separate worker service.
+- Polling-based resolution watcher for external/mock ticket status sync. Webhooks are intentionally left as a next-step extension.
+- OpenTelemetry tracing with console exporter by default and optional OTLP export to Jaeger.
 - RAG endpoints:
   - `GET /api/rag/status?tenant_id=<tenant>`
   - `POST /api/rag/reindex?tenant_id=<tenant>` (requires `x-tenant-admin-key`)
@@ -122,6 +126,12 @@ OPENROUTER_ANALYSIS_MODEL=<stronger_model_on_openrouter>
 docker compose up --build
 ```
 
+Optional tracing UI:
+
+- Keep `OTEL_EXPORTER_MODE=console` for simple local trace output in logs.
+- Set `OTEL_EXPORTER_MODE=otlp` to export traces to Jaeger.
+- Open Jaeger at `http://localhost:16686`.
+
 4. **Optional: swap sample codebase with a real e-commerce repository**
 
 - Replace content under `./ecommerce_repo` (or change `ECOMMERCE_CODEBASE_PATH` mount target).
@@ -138,7 +148,28 @@ curl -X POST http://localhost:8000/api/rag/reindex
 - **Frontend / Admins:** `http://localhost` (or the mapped Docker port, e.g. `localhost:3000`)
 - **Frontend / Public Intake:** `http://localhost/intake/{tenant_id}`
 - **Backend API docs:** `http://localhost:8000/docs`
+- **Jaeger UI (optional):** `http://localhost:16686`
 - **MCP Bridge:** Runs internally on port `8080` (not exposed directly to users).
+
+---
+
+## Async Processing and Resolution Watcher
+
+- `POST /api/incidents/submit` now stores the incident and enqueues `process_incident` for the worker.
+- Jobs persist with lifecycle states `queued`, `running`, `completed`, and `failed`, plus `attempts`, `max_attempts`, `run_after`, and `last_error`.
+- Incident processing states are:
+  - `submitted`
+  - `processing`
+  - `triaged`
+  - `ticketed`
+  - `resolved`
+  - `failed`
+- Resolution watcher is implemented with polling first:
+  - worker schedules `sync_ticket_status`
+  - fetches provider/mock status
+  - maps external status into internal state
+  - resolves the incident locally and enqueues reporter notification exactly once
+- Webhook-based resolution is intentionally documented as a future extension, not omitted by accident.
 
 ---
 

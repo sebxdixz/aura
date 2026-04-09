@@ -34,6 +34,7 @@ from .models import (
 from .observability import log_event
 from .rag import retrieve_code_context
 from .react_orchestrator import create_ticket_via_react, is_react_mcp_enabled, notify_team_via_react
+from .telemetry import start_span
 from .triage_pipeline import (
     build_rag_query,
     extract_entities,
@@ -75,7 +76,7 @@ def calculate_severity(
     factors: dict[str, object] | None = None,
 ) -> tuple[str, int, str]:
     text = description.lower()
-    score = 10
+    score = 0
     reasons: list[str] = []
 
     weighted_tokens = {
@@ -118,6 +119,8 @@ def calculate_severity(
 
     score = max(0, min(score, 100))
     severity = _severity_from_score(score)
+    if score == 0:
+        return "low", 0, "No substantive incident signals were detected."
     rationale = (
         f"Severity score {score}/100 based on detected signals: {', '.join(reasons)}."
         if reasons
@@ -149,15 +152,24 @@ def run_triage(
         attachment=attachment,
         trace_id=trace_id,
     )
-    log_event(
-        "triage_started",
-        incident_id=incident_id,
-        tenant_id=tenant_id,
-        trace_id=trace_id,
-        attachment_type=attachment_type,
-        has_file=has_file,
-        reporter_type=normalized_input.reporter_type,
-    )
+    with start_span(
+        "triage.run",
+        **{
+            "incident.id": incident_id,
+            "tenant.id": tenant_id,
+            "attachment.used": bool(attachment and attachment.attachment_used),
+            "triage.mode": trace_id,
+        },
+    ):
+        log_event(
+            "triage_started",
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            trace_id=trace_id,
+            attachment_type=attachment_type,
+            has_file=has_file,
+            reporter_type=normalized_input.reporter_type,
+        )
     attachment_context = attachment_context_from_record(attachment)
     entities = extract_entities(normalized_input)
     log_event(
@@ -218,11 +230,12 @@ def run_triage(
     )
     code_context: list[dict[str, object]] = []
     rag_started_at = time.perf_counter()
-    if db is not None:
-        try:
-            code_context = retrieve_code_context(db, tenant_id=tenant_id, query_text=rag_query)
-        except Exception:
-            code_context = []
+    with start_span("rag.retrieve_context", **{"incident.id": incident_id, "tenant.id": tenant_id}):
+        if db is not None:
+            try:
+                code_context = retrieve_code_context(db, tenant_id=tenant_id, query_text=rag_query)
+            except Exception:
+                code_context = []
     rag_duration_ms = round((time.perf_counter() - rag_started_at) * 1000, 2)
 
     retrieved_context = summarize_retrieved_context(rag_query, code_context)
@@ -858,57 +871,58 @@ def _coerce_bool(value: object, fallback: bool) -> bool:
 
 
 def create_ticket(incident_id: str, triage: TriageOutput, tenant_id: str = "", description: str = "") -> TicketRecord:
-    validate_tool_name("create_ticket")
-    ticket_summary = _ticket_summary(description=description, triage=triage)
-    ticket_description = _ticket_description(incident_id=incident_id, tenant_id=tenant_id, description=description, triage=triage)
+    with start_span("ticket.create", **{"incident.id": incident_id, "tenant.id": tenant_id, "triage.mode": triage.triage_mode}):
+        validate_tool_name("create_ticket")
+        ticket_summary = _ticket_summary(description=description, triage=triage)
+        ticket_description = _ticket_description(incident_id=incident_id, tenant_id=tenant_id, description=description, triage=triage)
 
-    if is_react_mcp_enabled():
-        try:
-            ticket = create_ticket_via_react(
+        if is_react_mcp_enabled():
+            try:
+                ticket = create_ticket_via_react(
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    description=ticket_description,
+                    triage=triage,
+                )
+                ticket.title = ticket.title or ticket_summary
+                ticket.description = ticket.description or ticket_description
+                log_event("ticket_created", incident_id=incident_id, ticket_id=ticket.ticket_id, severity=triage.severity, ticket_provider=ticket.provider)
+                return ticket
+            except RuntimeError as exc:
+                log_event("react_ticket_failed", incident_id=incident_id, error=str(exc))
+
+        provider = os.getenv("TICKETING_PROVIDER", "mock-jira")
+        fallback_provider = os.getenv("TICKETING_FALLBACK_PROVIDER", "mock-linear")
+
+        def _attempt(prov: str, fail_flag: str) -> TicketRecord:
+            if prov == "jira":
+                return create_jira_ticket(
+                    incident_id=incident_id,
+                    summary=ticket_summary,
+                    description=ticket_description,
+                    severity=triage.severity,
+                    affected_service=triage.affected_service,
+                    rca=triage.root_cause_analysis,
+                    proposed_fix=triage.proposed_fix,
+                    cli_command=triage.proposed_cli_command,
+                    tenant_id=tenant_id,
+                )
+            return _create_ticket_with_provider(
                 incident_id=incident_id,
-                tenant_id=tenant_id,
-                description=ticket_description,
-                triage=triage,
-            )
-            ticket.title = ticket.title or ticket_summary
-            ticket.description = ticket.description or ticket_description
-            log_event("ticket_created", incident_id=incident_id, ticket_id=ticket.ticket_id, severity=triage.severity)
-            return ticket
-        except RuntimeError as exc:
-            log_event("react_ticket_failed", incident_id=incident_id, error=str(exc))
-
-    provider = os.getenv("TICKETING_PROVIDER", "mock-jira")
-    fallback_provider = os.getenv("TICKETING_FALLBACK_PROVIDER", "mock-linear")
-
-    def _attempt(prov: str, fail_flag: str) -> TicketRecord:
-        if prov == "jira":
-            return create_jira_ticket(
-                incident_id=incident_id,
+                provider=prov,
+                fail_flag=fail_flag,
                 summary=ticket_summary,
                 description=ticket_description,
-                severity=triage.severity,
-                affected_service=triage.affected_service,
-                rca=triage.root_cause_analysis,
-                proposed_fix=triage.proposed_fix,
-                cli_command=triage.proposed_cli_command,
-                tenant_id=tenant_id,
             )
-        return _create_ticket_with_provider(
-            incident_id=incident_id,
-            provider=prov,
-            fail_flag=fail_flag,
-            summary=ticket_summary,
-            description=ticket_description,
-        )
 
-    try:
-        ticket = _attempt(provider, "FORCE_FAIL_PRIMARY_TICKETING")
-    except RuntimeError:
-        log_event("integration_fallback", incident_id=incident_id, integration="ticketing", fallback_provider=fallback_provider)
-        ticket = _attempt(fallback_provider, "FORCE_FAIL_FALLBACK_TICKETING")
+        try:
+            ticket = _attempt(provider, "FORCE_FAIL_PRIMARY_TICKETING")
+        except RuntimeError:
+            log_event("integration_fallback", incident_id=incident_id, integration="ticketing", fallback_provider=fallback_provider)
+            ticket = _attempt(fallback_provider, "FORCE_FAIL_FALLBACK_TICKETING")
 
-    log_event("ticket_created", incident_id=incident_id, ticket_id=ticket.ticket_id, severity=triage.severity)
-    return ticket
+        log_event("ticket_created", incident_id=incident_id, ticket_id=ticket.ticket_id, severity=triage.severity, ticket_provider=ticket.provider)
+        return ticket
 
 
 def notify_team(
@@ -919,62 +933,94 @@ def notify_team(
     reporter_email: str = "",
     description: str = "",
 ) -> NotificationRecord:
-    validate_tool_name("notify_team")
-    notify_description = _ticket_description(incident_id=incident_id, tenant_id=tenant_id, description=description, triage=triage)
+    with start_span("notify.team", **{"incident.id": incident_id, "ticket.id": ticket.ticket_id, "tenant.id": tenant_id}):
+        validate_tool_name("notify_team")
+        notify_description = _ticket_description(incident_id=incident_id, tenant_id=tenant_id, description=description, triage=triage)
 
-    if is_react_mcp_enabled():
+        if is_react_mcp_enabled():
+            try:
+                detail = notify_team_via_react(
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    reporter_email=reporter_email,
+                    description=notify_description,
+                    triage=triage,
+                    ticket=ticket,
+                )
+                event = NotificationRecord(channel="team_communicator", status="sent", detail=detail)
+                log_event("team_notified", incident_id=incident_id, ticket_id=ticket.ticket_id)
+                return event
+            except RuntimeError as exc:
+                log_event("react_notify_failed", incident_id=incident_id, error=str(exc))
+
+        provider = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
+        fallback_provider = os.getenv("COMMUNICATOR_FALLBACK_PROVIDER", "mock-teams")
+
+        def _attempt(prov: str, fail_flag: str) -> str:
+            if prov == "slack":
+                return notify_slack(
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    ticket=ticket,
+                    triage=triage,
+                    reporter_email=reporter_email,
+                )
+            return _notify_team_with_provider(prov, ticket, triage, fail_flag=fail_flag)
+
         try:
-            detail = notify_team_via_react(
-                incident_id=incident_id,
-                tenant_id=tenant_id,
-                reporter_email=reporter_email,
-                description=notify_description,
-                triage=triage,
-                ticket=ticket,
-            )
-            event = NotificationRecord(channel="team_communicator", status="sent", detail=detail)
-            log_event("team_notified", incident_id=incident_id, ticket_id=ticket.ticket_id)
-            return event
-        except RuntimeError as exc:
-            log_event("react_notify_failed", incident_id=incident_id, error=str(exc))
+            detail = _attempt(provider, "FORCE_FAIL_PRIMARY_COMMUNICATOR")
+        except RuntimeError:
+            log_event("integration_fallback", incident_id=incident_id, integration="team_communicator", fallback_provider=fallback_provider)
+            detail = _attempt(fallback_provider, "FORCE_FAIL_FALLBACK_COMMUNICATOR")
 
-    provider = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
-    fallback_provider = os.getenv("COMMUNICATOR_FALLBACK_PROVIDER", "mock-teams")
-
-    def _attempt(prov: str, fail_flag: str) -> str:
-        if prov == "slack":
-            return notify_slack(
-                incident_id=incident_id,
-                tenant_id=tenant_id,
-                ticket=ticket,
-                triage=triage,
-                reporter_email=reporter_email,
-            )
-        return _notify_team_with_provider(prov, ticket, triage, fail_flag=fail_flag)
-
-    try:
-        detail = _attempt(provider, "FORCE_FAIL_PRIMARY_COMMUNICATOR")
-    except RuntimeError:
-        log_event("integration_fallback", incident_id=incident_id, integration="team_communicator", fallback_provider=fallback_provider)
-        detail = _attempt(fallback_provider, "FORCE_FAIL_FALLBACK_COMMUNICATOR")
-
-    event = NotificationRecord(channel="team_communicator", status="sent", detail=detail)
-    log_event("team_notified", incident_id=incident_id, ticket_id=ticket.ticket_id)
-    return event
+        event = NotificationRecord(channel="team_communicator", status="sent", detail=detail)
+        log_event("team_notified", incident_id=incident_id, ticket_id=ticket.ticket_id)
+        return event
 
 
 def notify_reporter(incident_id: str, reporter_email: str) -> NotificationRecord:
-    validate_tool_name("notify_reporter")
-    provider = os.getenv("EMAIL_PROVIDER", "mock-email")
-    fallback_provider = os.getenv("EMAIL_FALLBACK_PROVIDER", "mock-ses")
-    try:
-        detail = _notify_reporter_with_provider(provider, reporter_email, fail_flag="FORCE_FAIL_PRIMARY_EMAIL")
-    except RuntimeError:
-        log_event("integration_fallback", incident_id=incident_id, integration="reporter_email", fallback_provider=fallback_provider)
-        detail = _notify_reporter_with_provider(fallback_provider, reporter_email, fail_flag="FORCE_FAIL_FALLBACK_EMAIL")
-    event = NotificationRecord(channel="reporter_email", status="sent", detail=detail)
-    log_event("reporter_notified", incident_id=incident_id, reporter_email=reporter_email)
-    return event
+    with start_span("notify.reporter", **{"incident.id": incident_id}):
+        validate_tool_name("notify_reporter")
+        provider = os.getenv("EMAIL_PROVIDER", "mock-email")
+        fallback_provider = os.getenv("EMAIL_FALLBACK_PROVIDER", "mock-ses")
+        try:
+            detail = _notify_reporter_with_provider(provider, reporter_email, fail_flag="FORCE_FAIL_PRIMARY_EMAIL")
+        except RuntimeError:
+            log_event("integration_fallback", incident_id=incident_id, integration="reporter_email", fallback_provider=fallback_provider)
+            detail = _notify_reporter_with_provider(fallback_provider, reporter_email, fail_flag="FORCE_FAIL_FALLBACK_EMAIL")
+        event = NotificationRecord(channel="reporter_email", status="sent", detail=detail)
+        log_event("reporter_notified", incident_id=incident_id, reporter_email=reporter_email)
+        return event
+
+
+def pending_ticket_record() -> TicketRecord:
+    return TicketRecord(
+        ticket_id="pending",
+        provider="pending",
+        url="",
+        status="created",
+        title="Ticket pending worker processing",
+        description="AURA queued ticket creation for async processing.",
+        external_status="Queued",
+    )
+
+
+def queued_triage_output(description: str = "") -> TriageOutput:
+    summary = description[:160] if description else "Incident accepted and queued for asynchronous processing."
+    return TriageOutput(
+        severity="low",
+        affected_service="pending-service",
+        technical_summary=f"Queued incident intake. {summary}",
+        triage_summary="AURA accepted the incident and queued multimodal triage, ticketing, and notification in the worker.",
+        root_cause_analysis="Pending async triage.",
+        proposed_fix="Await async triage output before recommending an action.",
+        proposed_cli_command="echo 'incident queued'",
+        llm_mode="queued",
+        confidence=0.0,
+        severity_confidence=0.0,
+        root_cause_confidence=0.0,
+        triage_mode="queued",
+    )
 
 
 def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
@@ -1002,28 +1048,29 @@ def find_duplicate_incident(db: Session, tenant_id: str, description: str) -> In
 
 
 def resolve_incident(db: Session, incident_id: str) -> IncidentRecord | None:
-    record = repo.get_incident(db, incident_id)
-    if not record:
-        return None
+    with start_span("notify.reporter", **{"incident.id": incident_id}):
+        record = repo.get_incident(db, incident_id)
+        if not record:
+            return None
 
-    reporter_event = notify_reporter(incident_id, str(record.reporter_email))
-    updated = repo.resolve_incident(db, incident_id, extra_notification=reporter_event)
-    if updated:
-        repo.write_audit_log(db, stage="incident_resolved", tenant_id=updated.tenant_id, incident_id=incident_id)
-        log_event("incident_resolved", incident_id=incident_id)
+        reporter_event = notify_reporter(incident_id, str(record.reporter_email))
+        updated = repo.resolve_incident(db, incident_id, extra_notification=reporter_event)
+        if updated:
+            repo.write_audit_log(db, stage="incident_resolved", tenant_id=updated.tenant_id, incident_id=incident_id)
+            log_event("incident_resolved", incident_id=incident_id)
 
-        communicator = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
-        if communicator == "slack":
-            try:
-                notify_slack_resolved(
-                    incident_id=incident_id,
-                    tenant_id=updated.tenant_id,
-                    ticket=updated.ticket,
-                    reporter_email=str(updated.reporter_email),
-                )
-            except RuntimeError as exc:
-                log_event("slack_resolved_skipped", incident_id=incident_id, error=str(exc))
-    return updated
+            communicator = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
+            if communicator == "slack":
+                try:
+                    notify_slack_resolved(
+                        incident_id=incident_id,
+                        tenant_id=updated.tenant_id,
+                        ticket=updated.ticket,
+                        reporter_email=str(updated.reporter_email),
+                    )
+                except RuntimeError as exc:
+                    log_event("slack_resolved_skipped", incident_id=incident_id, error=str(exc))
+        return updated
 
 
 def get_tenant(db: Session, tenant_id: str) -> TenantRecord | None:

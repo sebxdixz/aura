@@ -49,6 +49,13 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: aura-jaeger
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+
   api:
     build:
       context: ./api
@@ -72,6 +79,8 @@ services:
       MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
       ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
       DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
+      OTEL_EXPORTER_MODE: ${OTEL_EXPORTER_MODE:-console}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -82,6 +91,45 @@ services:
         condition: service_healthy
       mcp_bridge:
         condition: service_healthy
+      jaeger:
+        condition: service_started
+
+  worker:
+    build:
+      context: ./api
+    container_name: aura-worker
+    restart: on-failure
+    env_file:
+      - .env
+    environment:
+      MOCK_MODE: ${MOCK_MODE:-true}
+      POSTGRES_DB: ${POSTGRES_DB:-aura}
+      POSTGRES_USER: ${POSTGRES_USER:-aura}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      ECOMMERCE_CODEBASE_PATH: ${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}
+      RAG_REPO_NAME: ${RAG_REPO_NAME:-ecommerce}
+      RAG_AUTO_INDEX: ${RAG_AUTO_INDEX:-false}
+      RAG_TOP_K: ${RAG_TOP_K:-4}
+      RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
+      MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
+      ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
+      OTEL_EXPORTER_MODE: ${OTEL_EXPORTER_MODE:-console}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:rw
+      - ./runtime/attachments:${ATTACHMENTS_DIR:-/workspace/attachments}:rw
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp_bridge:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
 
   web:
     build:

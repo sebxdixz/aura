@@ -343,7 +343,17 @@
         const response = await fetch(`${API}/api/incidents/submit`, { method: "POST", body: fd });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || "Incident processing failed.");
-        renderResults(data);
+        if (["submitted", "processing"].includes(String(data.processing_state || ""))) {
+          outStatus.textContent = "QUEUED";
+          termLines.innerHTML += `<div class="term-line">[AURA] Incident queued as ${data.incident_id}. Waiting for worker completion...</div>`;
+          const completed = await pollIncident(data.incident_id);
+          if (String(completed.processing_state || "") === "failed") {
+            return;
+          }
+          renderResults(completed);
+        } else {
+          renderResults(data);
+        }
       } catch (error) {
         outStatus.textContent = "FAILED";
         termLines.innerHTML += `<div class="term-line">[ERR] ${String(error.message || error)}</div>`;
@@ -432,6 +442,54 @@
       submitBtn.textContent = "Launch Another Triage";
       outWrap.scrollIntoView({ behavior: "smooth", block: "start" });
       toast("Commander brief generated successfully.");
+    }
+
+    async function pollIncident(incidentId) {
+      const started = Date.now();
+      while (Date.now() - started < 90000) {
+        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}`);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "Unable to refresh incident status.");
+        }
+        const processingState = String(data.processing_state || "");
+        if (processingState === "failed") {
+          renderFailure(data);
+          return data;
+        }
+        if (!["submitted", "processing"].includes(processingState)) {
+          return data;
+        }
+        outStatus.textContent = processingState.toUpperCase();
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      throw new Error("Worker processing timed out while waiting for incident completion.");
+    }
+
+    function renderFailure(data) {
+      terminal.classList.remove("active");
+      resultBlock.classList.add("active");
+      outStatus.textContent = "FAILED";
+      const failedDetail = (data.notifications || []).find((item) => item.status === "failed");
+      const failureText = failedDetail ? failedDetail.detail : "Worker processing failed before the commander brief could be completed.";
+      document.getElementById("resSev").textContent = "FAILED";
+      document.getElementById("resSum").textContent = failureText;
+      document.getElementById("resRCA").textContent = "Processing stopped before a root cause analysis was produced.";
+      document.getElementById("resFix").textContent = "Retry the incident or inspect worker logs and job history.";
+      document.getElementById("resRouting").textContent = `processing_state=${String(data.processing_state || "failed")}`;
+      document.getElementById("resExplainability").textContent = "AURA stored the incident but the async worker did not complete triage.";
+      document.getElementById("resScoreBreakdown").textContent = "No final score available.";
+      document.getElementById("resRagEvidence").textContent = "No final repository context available.";
+      document.getElementById("resPattern").textContent = "Multi-ticket analysis did not complete.";
+      document.getElementById("resAttachment").textContent = data.attachment?.attachment_filename
+        ? `Attachment stored: ${data.attachment.attachment_filename}`
+        : "No attachment stored.";
+      document.getElementById("resInfluence").textContent = "Attachment influence was not finalized.";
+      document.getElementById("resCode").textContent = "docker compose logs worker";
+      document.getElementById("resIntegrations").innerText = `incident=${data.incident_id}\nprocessing_state=${String(data.processing_state || "failed")}`;
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Retry Incident";
+      toast(failureText, true);
     }
 
     function toast(message, isError = false) {

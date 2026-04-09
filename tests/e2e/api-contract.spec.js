@@ -8,6 +8,20 @@ function uniqueTenant(prefix = "pw-api") {
   return `${prefix}-${now}-${rand}`;
 }
 
+async function pollIncident(request, incidentId, timeoutMs = 90000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const res = await request.get(`${API_BASE_URL}/api/incidents/${encodeURIComponent(incidentId)}`);
+    expect(res.ok()).toBeTruthy();
+    const incident = await res.json();
+    if (!["submitted", "processing"].includes(String(incident.processing_state || ""))) {
+      return incident;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error(`Timed out waiting for incident ${incidentId} to finish processing`);
+}
+
 function pngChunk(type, data) {
   const typeBuffer = Buffer.from(type, "ascii");
   const lengthBuffer = Buffer.alloc(4);
@@ -56,7 +70,8 @@ test.describe("AURA API contract", () => {
     });
 
     expect(submitRes.ok()).toBeTruthy();
-    const incident = await submitRes.json();
+    const queued = await submitRes.json();
+    const incident = await pollIncident(request, queued.incident_id);
     expect(incident.attachment).toBeNull();
     expect(incident.triage.attachment_used).toBeFalsy();
   });
@@ -89,7 +104,8 @@ test.describe("AURA API contract", () => {
     });
 
     expect(submitRes.ok()).toBeTruthy();
-    const incident = await submitRes.json();
+    const queued = await submitRes.json();
+    const incident = await pollIncident(request, queued.incident_id);
     expect(incident.attachment.attachment_filename).toBe("incident.log");
     expect(incident.attachment.attachment_used).toBeTruthy();
     expect(incident.triage.attachment_used).toBeTruthy();
@@ -126,7 +142,8 @@ test.describe("AURA API contract", () => {
     });
 
     expect(submitRes.ok()).toBeTruthy();
-    const incident = await submitRes.json();
+    const queued = await submitRes.json();
+    const incident = await pollIncident(request, queued.incident_id);
     expect(incident.attachment.attachment_type).toBe("image");
     expect(incident.triage.attachment_used).toBeTruthy();
     expect(incident.triage.attachment_summary.toLowerCase()).toContain("screenshot");
@@ -242,7 +259,8 @@ test.describe("AURA API contract", () => {
         },
       },
     });
-    const dedup = await second.json();
+    const dedupQueued = await second.json();
+    const dedup = await pollIncident(request, dedupQueued.incident_id);
     expect(dedup.triage.is_duplicate).toBeTruthy();
 
     await request.post(`${API_BASE_URL}/api/incidents/submit`, {
@@ -295,7 +313,8 @@ test.describe("AURA API contract", () => {
         },
       });
       expect(res.ok()).toBeTruthy();
-      incidents.push(await res.json());
+      const queued = await res.json();
+      incidents.push(await pollIncident(request, queued.incident_id));
     }
 
     const latest = incidents[2];

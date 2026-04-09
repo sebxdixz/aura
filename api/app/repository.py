@@ -81,6 +81,7 @@ def _row_to_incident(row: Any) -> IncidentRecord:
         reporter_email=row.reporter_email,
         description=row.description,
         status=row.status,
+        processing_state=getattr(row, "processing_state", "submitted") or "submitted",
         created_at=_iso(row.created_at),
         resolved_at=_iso_or_none(row.resolved_at),
         file_meta=row.file_meta,
@@ -138,7 +139,7 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
             """
             INSERT INTO incidents
                 (incident_id, tenant_id, reporter_email, description,
-                 status, file_meta,
+                 status, processing_state, resolved_at, file_meta,
                  attachment_type, attachment_filename, attachment_mime_type,
                  attachment_size_bytes, attachment_storage_path, attachment_text_extracted,
                  attachment_summary, evidence_from_attachment, attachment_signals, attachment_used,
@@ -148,6 +149,8 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
             VALUES
                 (:iid, :tid, :email, :desc,
                  :status,
+                 :processing_state,
+                 :resolved_at,
                  cast(:file_meta as jsonb),
                  :attachment_type,
                  :attachment_filename,
@@ -169,7 +172,34 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
                  cast(:triage as jsonb),
                  cast(:ticket as jsonb),
                  cast(:notifs as jsonb))
-            ON CONFLICT (incident_id) DO NOTHING
+            ON CONFLICT (incident_id) DO UPDATE SET
+                tenant_id = EXCLUDED.tenant_id,
+                reporter_email = EXCLUDED.reporter_email,
+                description = EXCLUDED.description,
+                status = EXCLUDED.status,
+                processing_state = EXCLUDED.processing_state,
+                resolved_at = COALESCE(EXCLUDED.resolved_at, incidents.resolved_at),
+                file_meta = EXCLUDED.file_meta,
+                attachment_type = EXCLUDED.attachment_type,
+                attachment_filename = EXCLUDED.attachment_filename,
+                attachment_mime_type = EXCLUDED.attachment_mime_type,
+                attachment_size_bytes = EXCLUDED.attachment_size_bytes,
+                attachment_storage_path = EXCLUDED.attachment_storage_path,
+                attachment_text_extracted = EXCLUDED.attachment_text_extracted,
+                attachment_summary = EXCLUDED.attachment_summary,
+                evidence_from_attachment = EXCLUDED.evidence_from_attachment,
+                attachment_signals = EXCLUDED.attachment_signals,
+                attachment_used = EXCLUDED.attachment_used,
+                duplicate_of_incident_id = EXCLUDED.duplicate_of_incident_id,
+                cluster_id = EXCLUDED.cluster_id,
+                recurrence_count_7d = EXCLUDED.recurrence_count_7d,
+                recurrence_count_30d = EXCLUDED.recurrence_count_30d,
+                related_links = EXCLUDED.related_links,
+                scope_assessment = EXCLUDED.scope_assessment,
+                multi_ticket_influence_reasoning = EXCLUDED.multi_ticket_influence_reasoning,
+                triage = EXCLUDED.triage,
+                ticket = EXCLUDED.ticket,
+                notifications = EXCLUDED.notifications
             """
         ),
         {
@@ -178,6 +208,8 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
             "email": str(record.reporter_email),
             "desc": record.description,
             "status": record.status,
+            "processing_state": record.processing_state,
+            "resolved_at": record.resolved_at,
             "file_meta": json.dumps(record.file_meta.model_dump() if record.file_meta else None),
             "attachment_type": record.attachment.attachment_type if record.attachment else None,
             "attachment_filename": record.attachment.attachment_filename if record.attachment else None,
@@ -340,6 +372,7 @@ def resolve_incident(
             """
             UPDATE incidents
             SET status = 'resolved',
+                processing_state = 'resolved',
                 resolved_at = :now,
                 notifications = notifications || cast(:notif as jsonb)
             WHERE incident_id = :iid
@@ -349,6 +382,134 @@ def resolve_incident(
             "iid": incident_id,
             "now": now,
             "notif": json.dumps([extra_notification.model_dump()]),
+        },
+    )
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def update_incident_processing_state(
+    db: Session,
+    incident_id: str,
+    processing_state: str,
+    last_error: str | None = None,
+) -> IncidentRecord | None:
+    row = db.execute(
+        text("SELECT ticket, notifications FROM incidents WHERE incident_id = :iid"),
+        {"iid": incident_id},
+    ).fetchone()
+    if not row:
+        return None
+
+    notifications = list(row.notifications or [])
+    if last_error:
+        notifications.append(
+            {
+                "channel": "team_communicator",
+                "status": "failed",
+                "detail": f"Processing failed: {last_error}",
+                "sent_at": _utc_now().isoformat(),
+            }
+        )
+
+    db.execute(
+        text(
+            """
+            UPDATE incidents
+            SET processing_state = :processing_state,
+                notifications = cast(:notifications as jsonb)
+            WHERE incident_id = :iid
+            """
+        ),
+        {
+            "iid": incident_id,
+            "processing_state": processing_state,
+            "notifications": json.dumps(notifications),
+        },
+    )
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def list_open_incidents_with_external_ticket(db: Session) -> list[IncidentRecord]:
+    rows = db.execute(
+        text(
+            """
+            SELECT *
+            FROM incidents
+            WHERE status = 'open'
+              AND processing_state IN ('triaged', 'ticketed')
+              AND COALESCE(ticket->>'ticket_id', '') <> ''
+              AND COALESCE(ticket->>'provider', '') <> ''
+            ORDER BY created_at ASC
+            """
+        )
+    ).fetchall()
+    return [_row_to_incident(r) for r in rows]
+
+
+def update_ticket_sync_state(
+    db: Session,
+    incident_id: str,
+    external_status: str,
+    synced_at: str,
+) -> IncidentRecord | None:
+    row = db.execute(
+        text("SELECT ticket FROM incidents WHERE incident_id = :iid"),
+        {"iid": incident_id},
+    ).fetchone()
+    if not row:
+        return None
+    ticket = dict(row.ticket or {})
+    ticket["external_status"] = external_status
+    ticket["last_synced_at"] = synced_at
+    db.execute(
+        text(
+            """
+            UPDATE incidents
+            SET ticket = cast(:ticket as jsonb)
+            WHERE incident_id = :iid
+            """
+        ),
+        {"iid": incident_id, "ticket": json.dumps(ticket)},
+    )
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def mark_incident_resolved(db: Session, incident_id: str) -> IncidentRecord | None:
+    db.execute(
+        text(
+            """
+            UPDATE incidents
+            SET status = 'resolved',
+                processing_state = 'resolved',
+                resolved_at = COALESCE(resolved_at, NOW())
+            WHERE incident_id = :iid
+            """
+        ),
+        {"iid": incident_id},
+    )
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def append_incident_notification(
+    db: Session,
+    incident_id: str,
+    notification: NotificationRecord,
+) -> IncidentRecord | None:
+    db.execute(
+        text(
+            """
+            UPDATE incidents
+            SET notifications = notifications || cast(:notification as jsonb)
+            WHERE incident_id = :iid
+            """
+        ),
+        {
+            "iid": incident_id,
+            "notification": json.dumps([notification.model_dump()]),
         },
     )
     db.commit()

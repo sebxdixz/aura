@@ -9,40 +9,39 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from .attachments import persist_attachment, process_attachment
+from .attachments import persist_attachment
 from .database import SessionLocal, ensure_runtime_schema, get_db, ping_db
 from .guardrails import validate_attachment, validate_description
 from .insights import get_tenant_audit_logs, get_tenant_insights_summary
+from .jobs import JOB_TYPE_PROCESS_INCIDENT, enqueue_job
 from .models import (
     AuditLogRecord,
+    AttachmentRecord,
     FileMeta,
-    IncidentLinkRecord,
     IncidentRecord,
     NotificationRecord,
-    TicketRecord,
     TenantDashboard,
     TenantInsightsSummary,
     TenantRecord,
 )
-from .multi_ticket import analyze_multi_ticket_intelligence, to_link_records
 from .observability import log_event, metrics_snapshot
 from .rag import auto_index_enabled, index_github_repository, rag_status, reindex_codebase
 from .services import (
     create_incident_id,
-    create_ticket,
     ensure_tenant,
     find_duplicate_incident,
     get_incident,
     get_tenant,
     list_incidents,
-    notify_team,
+    pending_ticket_record,
+    queued_triage_output,
     register_tenant,
     resolve_incident,
-    run_triage,
     save_incident,
     tenant_dashboard,
 )
 from . import repository as repo
+from .telemetry import setup_telemetry, start_span
 
 app = FastAPI(title="AURA API", version="0.4.0")
 
@@ -68,6 +67,7 @@ class GithubSyncPayload(BaseModel):
 
 @app.on_event("startup")
 def startup_rag_bootstrap() -> None:
+    setup_telemetry()
     ensure_runtime_schema()
     db = SessionLocal()
     try:
@@ -133,210 +133,134 @@ async def submit_incident(
     attachment: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ) -> IncidentRecord:
-    try:
-        validate_description(description)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    incident_id = create_incident_id()
-    ensure_tenant(db, tenant_id=tenant_id)
-
-    file_meta: FileMeta | None = None
-    file_bytes: bytes | None = None
-    attachment_record = None
-    has_file = attachment is not None
-
-    if attachment is not None:
-        file_bytes = await attachment.read()
+    with start_span("api.submit_incident", **{"tenant.id": tenant_id}):
         try:
-            log_event(
-                "attachment_received",
-                incident_id=incident_id,
-                tenant_id=tenant_id,
-                attachment_type=(attachment.content_type or "").lower(),
-            )
-            safe_filename = validate_attachment(
-                filename=attachment.filename,
-                content_type=attachment.content_type,
-                size_bytes=len(file_bytes),
-                content_bytes=file_bytes,
-            )
-            log_event(
-                "attachment_validated",
-                incident_id=incident_id,
-                tenant_id=tenant_id,
-                attachment_type=(attachment.content_type or "").lower(),
-            )
+            validate_description(description)
         except ValueError as exc:
-            log_event(
-                "attachment_rejected",
-                incident_id=incident_id,
-                tenant_id=tenant_id,
-                attachment_type=(attachment.content_type or "").lower(),
-                error=str(exc),
-            )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        storage_path = persist_attachment(
-            incident_id=incident_id,
-            filename=safe_filename,
-            content_bytes=file_bytes,
-        )
-        log_event(
-            "attachment_saved",
-            incident_id=incident_id,
-            tenant_id=tenant_id,
-            attachment_type=(attachment.content_type or "").lower(),
-        )
-        attachment_record = process_attachment(
-            incident_id=incident_id,
-            tenant_id=tenant_id,
-            filename=safe_filename,
-            content_type=attachment.content_type or "application/octet-stream",
-            content_bytes=file_bytes,
-            storage_path=storage_path,
-        )
-        file_meta = FileMeta(
-            filename=attachment_record.attachment_filename,
-            content_type=attachment_record.attachment_mime_type,
-            size_bytes=attachment_record.attachment_size_bytes,
-        )
+        incident_id = create_incident_id()
+        ensure_tenant(db, tenant_id=tenant_id)
 
-    log_event("incident_ingested", incident_id=incident_id, tenant_id=tenant_id, has_file=has_file)
+        file_meta: FileMeta | None = None
+        attachment_record: AttachmentRecord | None = None
+        has_file = attachment is not None
 
-    duplicate = find_duplicate_incident(db, tenant_id=tenant_id, description=description)
-    if duplicate:
-        triage = duplicate.triage.model_copy(deep=True)
-        triage.is_duplicate = True
-        triage.duplicate_of_incident_id = duplicate.incident_id
-        triage.dedup_confidence = 0.98
-        triage.technical_summary = (
-            f"Deduplicated incident linked to {duplicate.incident_id}. "
-            f"{triage.technical_summary}"
-        )
-        dedup_note = NotificationRecord(
-            channel="team_communicator",
-            status="sent",
-            detail=f"Deduplicated with {duplicate.incident_id}; skipped new ticket/alert.",
-        )
+        if attachment is not None:
+            file_bytes = await attachment.read()
+            content_type = attachment.content_type or "application/octet-stream"
+            try:
+                log_event(
+                    "attachment_received",
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    attachment_type=content_type.lower(),
+                )
+                safe_filename = validate_attachment(
+                    filename=attachment.filename,
+                    content_type=attachment.content_type,
+                    size_bytes=len(file_bytes),
+                    content_bytes=file_bytes,
+                )
+                log_event(
+                    "attachment_validated",
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    attachment_type=content_type.lower(),
+                )
+            except ValueError as exc:
+                log_event(
+                    "attachment_rejected",
+                    incident_id=incident_id,
+                    tenant_id=tenant_id,
+                    attachment_type=content_type.lower(),
+                    error=str(exc),
+                )
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            storage_path = persist_attachment(
+                incident_id=incident_id,
+                filename=safe_filename,
+                content_bytes=file_bytes,
+            )
+            attachment_kind = "image" if content_type.startswith("image/") else "text"
+            attachment_record = AttachmentRecord(
+                attachment_type=attachment_kind,
+                attachment_filename=safe_filename,
+                attachment_mime_type=content_type,
+                attachment_size_bytes=len(file_bytes),
+                attachment_storage_path=storage_path,
+                attachment_used=False,
+            )
+            file_meta = FileMeta(
+                filename=safe_filename,
+                content_type=content_type,
+                size_bytes=len(file_bytes),
+            )
+            log_event(
+                "attachment_saved",
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                attachment_type=content_type.lower(),
+            )
+
+        log_event("incident_ingested", incident_id=incident_id, tenant_id=tenant_id, has_file=has_file)
+
+        duplicate = find_duplicate_incident(db, tenant_id=tenant_id, description=description)
+        if duplicate:
+            triage = duplicate.triage.model_copy(deep=True)
+            triage.is_duplicate = True
+            triage.duplicate_of_incident_id = duplicate.incident_id
+            triage.dedup_confidence = 0.98
+            triage.technical_summary = (
+                f"Deduplicated incident linked to {duplicate.incident_id}. "
+                f"{triage.technical_summary}"
+            )
+            dedup_note = NotificationRecord(
+                channel="team_communicator",
+                status="sent",
+                detail=f"Deduplicated with {duplicate.incident_id}; skipped new ticket/alert.",
+            )
+            incident = IncidentRecord(
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                reporter_email=reporter_email,
+                description=description,
+                status="open",
+                processing_state="triaged",
+                file_meta=file_meta,
+                attachment=attachment_record,
+                triage=triage,
+                ticket=duplicate.ticket,
+                notifications=[dedup_note],
+                related_links=[],
+            )
+            save_incident(db, incident)
+            log_event("incident_deduplicated", incident_id=incident_id, tenant_id=tenant_id, duplicate_of=duplicate.incident_id)
+            return incident
+
         incident = IncidentRecord(
             incident_id=incident_id,
             tenant_id=tenant_id,
             reporter_email=reporter_email,
             description=description,
+            status="open",
+            processing_state="submitted",
             file_meta=file_meta,
             attachment=attachment_record,
-            triage=triage,
-            ticket=duplicate.ticket,
-            notifications=[dedup_note],
+            triage=queued_triage_output(description),
+            ticket=pending_ticket_record(),
+            notifications=[],
+            related_links=[],
         )
         save_incident(db, incident)
-        log_event("incident_deduplicated", incident_id=incident_id, tenant_id=tenant_id, duplicate_of=duplicate.incident_id)
-        return incident
-
-    triage = run_triage(
-        incident_id=incident_id,
-        tenant_id=tenant_id,
-        reporter_email=reporter_email,
-        description=description,
-        has_file=has_file,
-        attachment=attachment_record,
-        attachment_filename=file_meta.filename if file_meta else None,
-        attachment_content_type=file_meta.content_type if file_meta else None,
-        attachment_bytes=file_bytes,
-        db=db,
-    )
-    log_event("incident_triaged", incident_id=incident_id, severity=triage.severity, service=triage.affected_service)
-
-    temp_incident = IncidentRecord(
-        incident_id=incident_id,
-        tenant_id=tenant_id,
-        reporter_email=reporter_email,
-        description=description,
-        file_meta=file_meta,
-        attachment=attachment_record,
-        triage=triage,
-        ticket=TicketRecord(ticket_id="pending", provider="pending", url="", status="created"),
-        notifications=[],
-        related_links=[],
-    )
-    log_event("multi_ticket_started", incident_id=incident_id, tenant_id=tenant_id)
-    multi_ticket = analyze_multi_ticket_intelligence(db, temp_incident)
-    if multi_ticket.is_duplicate and multi_ticket.duplicate_of_incident_id:
-        log_event("duplicate_detected", incident_id=incident_id, tenant_id=tenant_id, duplicate_of=multi_ticket.duplicate_of_incident_id)
-    if multi_ticket.related_incident_ids:
-        log_event("related_incidents_linked", incident_id=incident_id, tenant_id=tenant_id, related_count=len(multi_ticket.related_incident_ids))
-    if multi_ticket.recurrence.pattern_detected:
-        log_event(
-            "recurrence_detected",
+        enqueue_job(
+            db,
+            JOB_TYPE_PROCESS_INCIDENT,
+            {"incident_id": incident_id},
             incident_id=incident_id,
-            tenant_id=tenant_id,
-            recurrence_count_7d=multi_ticket.recurrence.recurrence_count_7d,
-            recurrence_count_30d=multi_ticket.recurrence.recurrence_count_30d,
         )
-    if multi_ticket.cluster_id:
-        log_event("cluster_assigned", incident_id=incident_id, tenant_id=tenant_id, cluster_id=multi_ticket.cluster_id)
-    log_event(
-        "multi_ticket_completed",
-        incident_id=incident_id,
-        tenant_id=tenant_id,
-        is_duplicate=multi_ticket.is_duplicate,
-        related_count=len(multi_ticket.related_incident_ids),
-        recurrence_count_7d=multi_ticket.recurrence.recurrence_count_7d,
-        recurrence_count_30d=multi_ticket.recurrence.recurrence_count_30d,
-        cluster_id=multi_ticket.cluster_id,
-    )
-    triage.is_duplicate = triage.is_duplicate or multi_ticket.is_duplicate
-    triage.duplicate_of_incident_id = triage.duplicate_of_incident_id or multi_ticket.duplicate_of_incident_id
-    triage.dedup_confidence = triage.dedup_confidence or multi_ticket.dedup_confidence
-    triage.related_incident_ids = multi_ticket.related_incident_ids
-    triage.cluster_id = multi_ticket.cluster_id
-    triage.recurrence_count_7d = multi_ticket.recurrence.recurrence_count_7d
-    triage.recurrence_count_30d = multi_ticket.recurrence.recurrence_count_30d
-    triage.scope_assessment = multi_ticket.scope_assessment or triage.scope_assessment
-    triage.multi_ticket_influence_reasoning = multi_ticket.multi_ticket_influence_reasoning
-
-    ticket = create_ticket(
-        incident_id=incident_id,
-        triage=triage,
-        tenant_id=tenant_id,
-        description=description,
-    )
-    team_notification = notify_team(
-        incident_id=incident_id,
-        ticket=ticket,
-        triage=triage,
-        tenant_id=tenant_id,
-        reporter_email=reporter_email,
-        description=description,
-    )
-
-    incident = IncidentRecord(
-        incident_id=incident_id,
-        tenant_id=tenant_id,
-        reporter_email=reporter_email,
-        description=description,
-        file_meta=file_meta,
-        attachment=attachment_record,
-        triage=triage,
-        ticket=ticket,
-        notifications=[team_notification],
-        related_links=[
-            IncidentLinkRecord(
-                source_incident_id=incident_id,
-                target_incident_id=link.target_incident_id,
-                relationship_type=link.relationship_type,
-                similarity_score=link.similarity_score,
-                reasoning=link.reasoning,
-                shared_signals=link.shared_signals,
-            )
-            for link in to_link_records(multi_ticket)
-        ],
-    )
-    save_incident(db, incident)
-    if incident.related_links:
-        repo.save_incident_links(db, tenant_id=tenant_id, source_incident_id=incident_id, links=incident.related_links)
-    return incident
+        return get_incident(db, incident_id) or incident
 
 
 @app.post("/api/incidents/{incident_id}/resolve", response_model=IncidentRecord)
@@ -344,10 +268,11 @@ def api_resolve_incident(
     incident_id: str,
     db: Session = Depends(get_db),
 ) -> IncidentRecord:
-    incident = resolve_incident(db, incident_id)
-    if not incident:
-        raise HTTPException(status_code=404, detail="incident not found")
-    return incident
+    with start_span("api.resolve_incident", **{"incident.id": incident_id}):
+        incident = resolve_incident(db, incident_id)
+        if not incident:
+            raise HTTPException(status_code=404, detail="incident not found")
+        return incident
 
 
 @app.post("/api/tenants/register", response_model=TenantRecord)

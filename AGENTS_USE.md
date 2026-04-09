@@ -12,6 +12,7 @@ This document explains how AURA agents are implemented and how they are used in 
 - Automatic creation of a Jira ticket (real or mock).
 - Team notification via Slack webhook (real or mock).
 - Reporter notification when incident is marked resolved (mock email, real SMTP TBD).
+- Separate worker execution for async triage, ticket sync, and reporter notification.
 
 ## 2. Agent Design
 
@@ -36,6 +37,7 @@ Responsibilities:
 Current implementation:
 
 - Endpoint: `POST /api/incidents/submit`
+- Submit persists incident + attachment metadata, then enqueues `process_incident` for the worker.
 - Schema: `api/app/models.py`
 - Guardrails: `api/app/guardrails.py`
 - RAG retrieval over e-commerce codebase chunks stored in PostgreSQL + pgvector.
@@ -62,6 +64,10 @@ Current implementation:
   - Routes to `api/app/integrations/slack.py` when `COMMUNICATOR_PROVIDER=slack`
 - Reporter notify tool: `notify_reporter` in `api/app/services.py`
 - Slack resolution: `notify_slack_resolved` called automatically on resolve
+- Resolution watcher:
+  - polling-based `sync_ticket_status` job in worker
+  - explicit `map_external_status_to_internal(provider, external_status)`
+  - webhook path intentionally left as a future extension
 - Optional ReAct mode (`REACT_ENGINE=openrouter_mcp`):
   - planner model via OpenRouter API
   - Jira/Slack action execution via MCP tools
@@ -80,6 +86,18 @@ Current API emits structured logs for stages:
 - `incident_resolved`
 - `slack_resolved_sent`
 - `reporter_notified`
+- `job_enqueued`
+- `job_claimed`
+- `job_started`
+- `job_completed`
+- `job_failed`
+- `job_retried`
+- `ticket_status_sync_started`
+- `ticket_status_fetched`
+- `ticket_status_changed`
+- `external_resolution_detected`
+- `reporter_resolution_notification_enqueued`
+- `reporter_resolution_notification_sent`
 - `integration_retry`
 - `integration_fallback`
 - `tenant_registered`
@@ -92,6 +110,10 @@ Where:
 - Log function: `api/app/observability.py`
 - Metrics endpoint: `GET /metrics`
 - Correlation key: `incident_id` (plus `tenant_id` where available)
+- OpenTelemetry tracer setup: `api/app/telemetry.py`
+- Exporters:
+  - `OTEL_EXPORTER_MODE=console` for logs-only tracing
+  - `OTEL_EXPORTER_MODE=otlp` for Jaeger via OTLP HTTP
 - Operational endpoints:
   - `GET /api/tenants/{tenant_id}/audit-logs`
   - `GET /api/tenants/{tenant_id}/insights/summary`
@@ -170,6 +192,10 @@ OPENROUTER_ANALYSIS_MODEL=<stronger_model>
 ### Reliability
 
 - Retries configurable with `INTEGRATION_RETRIES` and `INTEGRATION_RETRY_DELAY_MS`.
+- Worker retries configurable with `WORKER_RETRY_DELAY_SECONDS`; jobs persist `attempts`, `max_attempts`, `run_after`, and `last_error`.
+- Polling watcher is idempotent:
+  - only resolves locally if incident is not already resolved
+  - only enqueues reporter notification if it has not already been sent
 - Provider fallback for each integration path:
   - Ticketing: `TICKETING_PROVIDER` → `TICKETING_FALLBACK_PROVIDER`
   - Team communicator: `COMMUNICATOR_PROVIDER` → `COMMUNICATOR_FALLBACK_PROVIDER`

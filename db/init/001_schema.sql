@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     reporter_email  VARCHAR(255) NOT NULL,
     description     TEXT         NOT NULL,
     status          VARCHAR(20)  NOT NULL DEFAULT 'open',
+    processing_state VARCHAR(20) NOT NULL DEFAULT 'submitted',
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     resolved_at     TIMESTAMPTZ,
     file_meta       JSONB,
@@ -42,6 +43,21 @@ CREATE TABLE IF NOT EXISTS incidents (
     triage          JSONB        NOT NULL,
     ticket          JSONB        NOT NULL,
     notifications   JSONB        NOT NULL DEFAULT '[]'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id BIGSERIAL PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    payload JSONB NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    run_after TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    locked_at TIMESTAMPTZ,
+    locked_by TEXT,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS incident_links (
@@ -81,6 +97,7 @@ CREATE TABLE IF NOT EXISTS code_chunks (
 -- Indexes for tenant isolation and common query patterns
 CREATE INDEX IF NOT EXISTS idx_incidents_tenant_id ON incidents (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_incidents_status    ON incidents (status);
+CREATE INDEX IF NOT EXISTS idx_incidents_processing_state ON incidents (processing_state);
 CREATE INDEX IF NOT EXISTS idx_incidents_created   ON incidents (created_at);
 CREATE INDEX IF NOT EXISTS idx_incidents_duplicate_of ON incidents (duplicate_of_incident_id);
 CREATE INDEX IF NOT EXISTS idx_incidents_cluster_id ON incidents (cluster_id);
@@ -93,3 +110,4 @@ CREATE INDEX IF NOT EXISTS idx_code_chunks_embed   ON code_chunks USING ivfflat 
 CREATE INDEX IF NOT EXISTS idx_incident_links_tenant ON incident_links (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_incident_links_source ON incident_links (source_incident_id);
 CREATE INDEX IF NOT EXISTS idx_incident_links_target ON incident_links (target_incident_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status_run_after ON jobs (status, run_after);
