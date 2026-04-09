@@ -39,6 +39,8 @@ Current implementation:
 - Schema: `api/app/models.py`
 - Guardrails: `api/app/guardrails.py`
 - RAG retrieval over e-commerce codebase chunks stored in PostgreSQL + pgvector.
+- Tenant-scoped GitHub ingestion to vector DB is available via `POST /api/rag/github-sync`
+  (no local `git clone`; requires `x-tenant-admin-key`).
 - Optional two-stage live path via OpenRouter:
   - Stage 1 extractor model (`OPENROUTER_MULTIMODAL_MODEL`, default `google/gemini-2.5-flash`)
   - Stage 2 analysis model (`OPENROUTER_ANALYSIS_MODEL`) for final triage JSON.
@@ -126,8 +128,21 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
 REACT_ENGINE=openrouter_mcp
 OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=openai/gpt-4o-mini
-MCP_BRIDGE_URL=https://your-mcp-bridge.example.com/invoke
+MCP_BRIDGE_URL=http://mcp_bridge:8080/invoke
+MCP_JIRA_TOOL=jira_create_issue
+MCP_SLACK_TOOL=slack_post_message
 # or set MCP_JIRA_URL / MCP_SLACK_URL directly
+
+# MCP Atlassian credentials (required for jira_create_issue):
+JIRA_URL=https://your-org.atlassian.net
+JIRA_USERNAME=sre@your-org.com
+JIRA_API_TOKEN=...
+JIRA_PROJECT_KEY=AURA
+
+# MCP Slack credentials (required for slack_post_message):
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_TEAM_ID=T01234567
+SLACK_DEFAULT_CHANNEL_ID=C01234567
 
 # To enable two-stage multimodal triage with OpenRouter:
 MOCK_MODE=false

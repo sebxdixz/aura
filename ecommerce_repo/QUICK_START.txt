@@ -1,0 +1,222 @@
+========================================================
+PORTFOLIO DE SEBASTIAN DIAZ - QUICK START GUIDE
+========================================================
+
+UBICACION: C:\Users\sdiaz\OneDrive - Axo\Escritorio\Personal\portfolio
+
+ARCHIVOS PRINCIPALES CREADOS:
+========================================================
+
+CONFIGURACION:
+  - package.json                 (Dependencias + scripts)
+  - babel.config.js             (Reanimated plugin)
+  - metro.config.js             (Metro bundler config)
+  - tsconfig.json               (TypeScript config)
+  - app.json                    (Expo config)
+  - vercel.json                 (Vercel deployment)
+  - .env.example                (Variables de entorno)
+
+DOCUMENTACION:
+  - SETUP.md                    (Guía paso a paso) ← LEER PRIMERO
+  - TESTING.md                  (Cómo testear)
+  - QUICK_START.txt             (Este archivo)
+
+COMPONENTES (src/components/):
+  - StackCarousel.tsx           (Hero: carrusel cinético)
+  - ProjectCard.tsx             (Tarjeta con video)
+  - ProjectsGrid.tsx            (Grilla con hover=invert)
+  - LabSection.tsx              (GitHub feed con cascada)
+
+DATOS (src/constants/):
+  - projects.ts                 (Tus proyectos aqui)
+
+RUTAS (app/):
+  - _layout.tsx                 (Layout principal con gestos)
+  - index.tsx                   (Página home)
+
+========================================================
+PASOS INMEDIATOS:
+========================================================
+
+1. VER DOCUMENTACION:
+   - Abre: SETUP.md
+   - Lee: Secciones 1-4
+
+2. PERSONALIZAR PROYECTOS:
+   - Abre: src/constants/projects.ts
+   - Edita: PROJECTS array con tus proyectos
+   - Requiere: videoUrl de CDN
+
+3. PREPARAR VIDEOS:
+   - Convierte videos a .mp4 con bajo bitrate
+   - Sube a: Cloudinary, Vercel, o tu CDN
+   - Nota: Crítico para 60 FPS
+
+4. INICIAR DESARROLLO:
+   npm run dev
+   → Abre http://localhost:8081
+
+5. TESTEAR:
+   - Swipe del carrusel (izquierda/derecha)
+   - Hover en grilla (invierte tarjeta)
+   - Scroll a GitHub feed (cascada)
+
+6. BUILDEAR PARA PRODUCCION:
+   npm run build
+   → Crea carpeta dist/
+
+7. DEPLOYAR EN VERCEL:
+   - Conecta GitHub a https://vercel.com/new
+   - Selecciona tu repo
+   - Vercel auto-detecta Expo
+   - Click Deploy
+
+========================================================
+TECH STACK INSTALADO:
+========================================================
+
+Framework:              Expo 51 + React Native Web
+Motor de Animacion:     Reanimated 4.1 (nativo 60 FPS)
+Gestos:                 Gesture Handler 2.28
+Video:                  Expo AV 14
+Routing:                Expo Router
+TypeScript:             TypeScript 5
+Build:                  Metro Bundler
+Deploy:                 Vercel (CDN global)
+
+========================================================
+PROXIMOS PASOS OPCIONALES:
+========================================================
+
+A. Cambiar tema a modo oscuro:
+   - app/index.tsx
+   - Cambiar backgroundColor #FFFFFF → #000000
+
+B. Agregar GitHub token (para mas requests):
+   - Crear en: https://github.com/settings/tokens
+   - Guardar en: .env.local
+   - EXPO_PUBLIC_GITHUB_TOKEN=tu_token
+
+C. Agregar analytics:
+   - Google Analytics ID en .env.local
+   - Integrar en: src/hooks/ (nuevo archivo)
+
+D. Optimizar imagenes:
+   - Convertir a WebP
+   - Usar Vercel Image Optimization
+
+========================================================
+TROUBLESHOOTING RAPIDO:
+========================================================
+
+Error: "npm: command not found"
+  → Instalar Node.js desde nodejs.org
+
+Error: "Cannot find module react-native-reanimated"
+  → rm -rf node_modules && npm install
+
+Video no se reproduce
+  → Verificar: formato .mp4, bitrate <5MB, URL accesible
+
+Animaciones lentas
+  → npm run dev --clear
+  → Verificar: no hay mucho JavaScript en useAnimatedStyle
+
+GitHub feed da error
+  → Límite de API alcanzado (60/hora sin token)
+  → Usar GitHub token (ver arriba)
+
+========================================================
+ARCHIVOS QUE DEBES EDITAR:
+========================================================
+
+1. src/constants/projects.ts      (Tus proyectos)
+2. app/index.tsx                  (Personalizar layout)
+3. app/_layout.tsx                (Cambiar colors)
+4. .env.local                     (Variables secretas)
+
+ARCHIVOS QUE NO TOQUES:
+- package.json                    (Solo si agregas deps)
+- babel.config.js                 (Ya está optimizado)
+- metro.config.js                 (Ya está optimizado)
+
+========================================================
+ENLACES UTILES:
+========================================================
+
+Documentacion:
+  - Expo:        https://docs.expo.dev
+  - Reanimated:  https://docs.swmansion.com/react-native-reanimated
+  - Vercel:      https://vercel.com/docs
+
+GitHub:
+  - Repo: https://github.com/sebxdixz/sebastiandiaz.eeden.app
+  - Issues: Reporta problemas ahi
+
+Recursos:
+  - FFmpeg (comprimir videos): ffmpeg.org
+  - Cloudinary (hosting videos): cloudinary.com
+  - Vercel Blob (hosting videos): vercel.com/blob
+
+========================================================
+NOTAS IMPORTANTES:
+========================================================
+
+1. Reanimated ejecuta animaciones en el hilo nativo
+   → No causa re-renders en React
+   → Por eso es 60 FPS
+
+2. Videos deben estar COMPRIMIDOS
+   → Bitrate < 5 Mbps
+   → Formato: .mp4 o .webm
+   → Sin audio necesario (isMuted={true})
+
+3. El GitHub feed obtiene repos en automatico
+   → Desde: https://api.github.com/users/sebxdixz/repos
+   → Cambia "sebxdixz" en LabSection.tsx por tu usuario
+
+4. Vercel despliega automaticamente con git push
+   → No necesitas deploy manual
+   → Preview URL se genera en cada PR
+
+5. Lighthouse Score objetivo: 90+
+   → Optimize imagenes
+   → Minimize JavaScript
+   → Usar CDN para videos
+
+========================================================
+ESTRUCTURA VISUAL:
+
+┌─ Hero Section ────────────────────────────┐
+│                                           │
+│   [ Tarjeta 1 ] ← Swipe                  │
+│   [ Tarjeta 2 ]   izquierda/derecha      │
+│   [ Tarjeta 3 ]   para cambiar           │
+│                                           │
+│   Video autoplay, 60 FPS, gestos        │
+└─────────────────────────────────────────┘
+
+┌─ Featured Projects ───────────────────────┐
+│                                           │
+│  [ Proyecto ]  [ Proyecto ]              │
+│    Hover →      Hover →                   │
+│  (invert)       (invert)                  │
+│                                           │
+│  [ Proyecto ]  [ Proyecto ]              │
+└─────────────────────────────────────────┘
+
+┌─ The Lab (GitHub) ────────────────────────┐
+│                                           │
+│  ► Repositorio 1  ← Cascada              │
+│  ► Repositorio 2  ← Aparecen con        │
+│  ► Repositorio 3  ← delay (100ms c/u)   │
+│  ► Repositorio 4                         │
+│  ► Repositorio 5                         │
+│  ► Repositorio 6                         │
+└─────────────────────────────────────────┘
+
+========================================================
+
+LISTO PARA COMENZAR. LEE SETUP.md PRIMERO!
+
+========================================================

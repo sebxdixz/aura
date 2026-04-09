@@ -27,13 +27,17 @@ When a user submits an incident (text + PDF/audio/image/log evidence):
 
 AURA is designed for scale, safety, and precision.
 
-- **Frontend split by role:** public intake portal and isolated operations dashboard.
-- **Backend (FastAPI + Python):** tenant logic, orchestration, and integrations.
+- **Frontend Split by Role (Nginx):** 
+  - Admin Dashboard (`/`) protected by strict Tenant ID / Access Key login.
+  - Public Intake Portal (`/intake/{tenant}`) for end-users, locked to incident submission without admin access.
+- **Backend (FastAPI + Python):** tenant logic, AI agent orchestration, and REST API.
+- **MCP Bridge (Node.js):** adapter between AURA tool-calls and MCP servers (Jira + Slack).
+- **MCP HTTP Bridge (Node.js/Express):** a custom microservice acting as an HTTP-to-Stdio proxy, allowing the containerized FastAPI backend to natively connect with Atlassian and Slack Model Context Protocol (MCP) console servers `npx` binaries.
 - **Database (PostgreSQL):** tenant isolation, incident history, and metrics.
 - **Vector Store (pgvector on PostgreSQL):** code/document chunks for RAG retrieval.
 - **AI Layer (Dual-Agent System):**
   - **Agent 1: Ingestor (LLM + Pydantic):** strict schema output, multimodal handling, guardrails.
-  - **Agent 2: ReAct Orchestrator:** tools for ticketing/notifications and Auto-Fix generation.
+  - **Agent 2: ReAct Orchestrator:** tools for ticketing/notifications and Auto-Fix generation via MCP.
 
 ---
 
@@ -52,8 +56,10 @@ AURA is designed for scale, safety, and precision.
 
 ## Current Implementation Status
 
-- `web` public intake UI (`/intake/{tenant}`) with text + file upload.
-- `web_dashboard` isolated dashboard UI for ops workflows.
+- `web`: A monochrome Brutalist frontend divided by Nginx routes:
+  - Admin view (`index.html` at `/`) secured by a Tenant Login wrapper.
+  - User intake (`intake.html` at `/intake/{tenant}`) completely isolated from dashboard code.
+- `mcp-bridge`: Node.js Express server spawning `mcp-server-slack` and `mcp-server-atlassian` as child processes, converting HTTP JSON-RPC payloads to Stdio formatting for the orchestrator.
 - File allowlist includes `text/plain`, `application/pdf`, image formats, and common audio types.
 - `api` E2E flow:
   - `POST /api/incidents/submit`
@@ -73,9 +79,11 @@ AURA is designed for scale, safety, and precision.
   - model execution marker (`llm_mode`: mock/live/fallback)
 - Structured observability through logs and `GET /metrics`.
 - RAG endpoints:
-  - `GET /api/rag/status`
-  - `POST /api/rag/reindex`
+  - `GET /api/rag/status?tenant_id=<tenant>`
+  - `POST /api/rag/reindex?tenant_id=<tenant>` (requires `x-tenant-admin-key`)
+  - `POST /api/rag/github-sync` (direct GitHub -> vector DB; no clone; tenant admin only)
 - Integrations include retry + fallback strategy (ticketing, communicator, reporter email).
+- MCP bridge service included in Docker Compose for Jira/Slack MCP tool dispatch.
 - PostgreSQL bootstrap schema under `db/init/001_schema.sql`.
 - Playwright API E2E suite available via `npm run test:e2e`.
 
@@ -125,9 +133,12 @@ curl -X POST http://localhost:8000/api/rag/reindex
 
 5. **Open the app**
 
-- Frontend / Public Intake: `http://localhost:3000/intake/{tenant_id}`
-- Frontend / Ops Dashboard: `http://localhost:3001`
-- Backend API docs: `http://localhost:8000/docs`
+5. **Open the app**
+
+- **Frontend / Admins:** `http://localhost` (or the mapped Docker port, e.g. `localhost:3000`)
+- **Frontend / Public Intake:** `http://localhost/intake/{tenant_id}`
+- **Backend API docs:** `http://localhost:8000/docs`
+- **MCP Bridge:** Runs internally on port `8080` (not exposed directly to users).
 
 ---
 

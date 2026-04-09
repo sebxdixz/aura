@@ -63,11 +63,18 @@ curl -s "http://localhost:8000/api/incidents?tenant_id=demo-tenant"
 # Resolve incident (replace INCIDENT_ID)
 curl -s -X POST http://localhost:8000/api/incidents/INCIDENT_ID/resolve
 
-# Check RAG/vector index status
-curl -s http://localhost:8000/api/rag/status
+# Check RAG/vector index status for a tenant
+curl -s "http://localhost:8000/api/rag/status?tenant_id=demo-tenant"
 
-# Trigger RAG reindex (after updating ecommerce_repo mount content)
-curl -s -X POST http://localhost:8000/api/rag/reindex
+# Trigger local-path RAG reindex for a tenant (admin-only)
+curl -s -X POST "http://localhost:8000/api/rag/reindex?tenant_id=demo-tenant" \
+  -H "x-tenant-admin-key: change-me"
+
+# Sync GitHub repo directly into vector DB (no git clone, admin-only)
+curl -s -X POST http://localhost:8000/api/rag/github-sync \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-admin-key: change-me" \
+  -d '{"tenant_id":"demo-tenant","repo_url":"https://github.com/medusajs/medusa","branch":"main"}'
 ```
 
 ## 5. Run automated tests (Playwright)
@@ -139,6 +146,10 @@ npm run test:e2e:all
   - `REACT_ENGINE=openrouter_mcp`
   - `OPENROUTER_API_KEY=<your_key>`
   - `OPENROUTER_MODEL=<model_on_openrouter>`
-  - `MCP_BRIDGE_URL=<bridge_endpoint>` or `MCP_JIRA_URL` + `MCP_SLACK_URL`
+  - `MCP_BRIDGE_URL=http://mcp_bridge:8080/invoke` (default in Docker network)
+  - `MCP_JIRA_TOOL=jira_create_issue`
+  - `MCP_SLACK_TOOL=slack_post_message`
+  - Jira MCP credentials: `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` (or `JIRA_PERSONAL_TOKEN`)
+  - Slack MCP credentials: `SLACK_BOT_TOKEN`, `SLACK_TEAM_ID`, `SLACK_DEFAULT_CHANNEL_ID`
 - Retry/fallback behavior is controlled by `.env`.
 - Persistent storage is PostgreSQL; data survives API restarts.

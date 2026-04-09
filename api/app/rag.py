@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 
 from sqlalchemy.orm import Session
 
@@ -64,6 +68,10 @@ def rag_repo_name() -> str:
     return os.getenv("RAG_REPO_NAME", "ecommerce")
 
 
+def rag_default_tenant_id() -> str:
+    return os.getenv("RAG_DEFAULT_TENANT_ID", "default")
+
+
 def rag_embedding_dim() -> int:
     value = os.getenv("RAG_EMBEDDING_DIM", "1536")
     try:
@@ -96,12 +104,14 @@ def auto_index_enabled() -> bool:
     return os.getenv("RAG_AUTO_INDEX", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def rag_status(db: Session) -> dict[str, Any]:
+def rag_status(db: Session, *, tenant_id: str | None = None) -> dict[str, Any]:
     ensure_vector_ready(db)
+    tenant = (tenant_id or rag_default_tenant_id()).strip() or rag_default_tenant_id()
     repo = rag_repo_name()
     path = rag_path()
-    chunks = count_repo_chunks(db, repo_name=repo)
+    chunks = count_repo_chunks(db, tenant_id=tenant, repo_name=repo)
     return {
+        "tenant_id": tenant,
         "repo_name": repo,
         "codebase_path": path,
         "path_exists": Path(path).exists(),
@@ -110,14 +120,16 @@ def rag_status(db: Session) -> dict[str, Any]:
     }
 
 
-def reindex_codebase(db: Session) -> dict[str, Any]:
+def reindex_codebase(db: Session, *, tenant_id: str | None = None, repo_name: str | None = None) -> dict[str, Any]:
     ensure_vector_ready(db)
 
-    repo = rag_repo_name()
+    tenant = (tenant_id or rag_default_tenant_id()).strip() or rag_default_tenant_id()
+    repo = (repo_name or rag_repo_name()).strip() or rag_repo_name()
     root = Path(rag_path())
     if not root.exists() or not root.is_dir():
         return {
             "repo_name": repo,
+            "tenant_id": tenant,
             "codebase_path": str(root),
             "indexed_files": 0,
             "indexed_chunks": 0,
@@ -132,7 +144,7 @@ def reindex_codebase(db: Session) -> dict[str, Any]:
     overlap = _safe_int("RAG_CHUNK_OVERLAP", 200, minimum=0, maximum=2000)
 
     files = list(_iter_source_files(root, max_files=max_files))
-    cleared = clear_repo_chunks(db, repo_name=repo)
+    cleared = clear_repo_chunks(db, tenant_id=tenant, repo_name=repo)
     indexed_files = 0
     indexed_chunks = 0
 
@@ -151,6 +163,7 @@ def reindex_codebase(db: Session) -> dict[str, Any]:
             embedding = _embed_text(cleaned)
             upsert_code_chunk(
                 db,
+                tenant_id=tenant,
                 repo_name=repo,
                 file_path=str(file_path.relative_to(root)).replace("\\", "/"),
                 chunk_index=idx,
@@ -169,6 +182,7 @@ def reindex_codebase(db: Session) -> dict[str, Any]:
     commit_chunks(db)
     log_event(
         "rag_index_completed",
+        tenant_id=tenant,
         repo_name=repo,
         indexed_files=indexed_files,
         indexed_chunks=indexed_chunks,
@@ -176,6 +190,7 @@ def reindex_codebase(db: Session) -> dict[str, Any]:
     )
     return {
         "repo_name": repo,
+        "tenant_id": tenant,
         "codebase_path": str(root),
         "indexed_files": indexed_files,
         "indexed_chunks": indexed_chunks,
@@ -184,8 +199,15 @@ def reindex_codebase(db: Session) -> dict[str, Any]:
     }
 
 
-def retrieve_code_context(db: Session, *, query_text: str, top_k: int | None = None) -> list[dict[str, Any]]:
+def retrieve_code_context(
+    db: Session,
+    *,
+    tenant_id: str | None = None,
+    query_text: str,
+    top_k: int | None = None,
+) -> list[dict[str, Any]]:
     ensure_vector_ready(db)
+    tenant = (tenant_id or rag_default_tenant_id()).strip() or rag_default_tenant_id()
     query = " ".join((query_text or "").split())
     if not query:
         return []
@@ -193,6 +215,7 @@ def retrieve_code_context(db: Session, *, query_text: str, top_k: int | None = N
     embedding = _embed_text(query)
     results = search_code_chunks(
         db,
+        tenant_id=tenant,
         repo_name=rag_repo_name(),
         embedding_literal=_embedding_literal(embedding),
         top_k=top_k or rag_top_k(),
@@ -207,8 +230,182 @@ def retrieve_code_context(db: Session, *, query_text: str, top_k: int | None = N
             }
         )
     if contexts:
-        log_event("rag_retrieval_completed", matched_chunks=len(contexts))
+        log_event("rag_retrieval_completed", tenant_id=tenant, matched_chunks=len(contexts))
     return contexts
+
+
+def index_github_repository(
+    db: Session,
+    *,
+    tenant_id: str,
+    repo_url: str,
+    branch: str | None = None,
+) -> dict[str, Any]:
+    ensure_vector_ready(db)
+    tenant = tenant_id.strip()
+    if not tenant:
+        raise ValueError("tenant_id is required")
+
+    owner, repo = _parse_github_repo(repo_url)
+    default_branch = branch.strip() if branch else _github_default_branch(owner, repo)
+    source_repo = f"{owner}/{repo}"
+    repo_name = rag_repo_name()
+
+    max_files = _safe_int("RAG_MAX_FILES", 500, minimum=1, maximum=5000)
+    max_chunks_per_file = _safe_int("RAG_MAX_CHUNKS_PER_FILE", 50, minimum=1, maximum=500)
+    chunk_size = _safe_int("RAG_CHUNK_SIZE", 1200, minimum=200, maximum=8000)
+    overlap = _safe_int("RAG_CHUNK_OVERLAP", 200, minimum=0, maximum=2000)
+    max_file_bytes = _safe_int("RAG_MAX_FILE_BYTES", 200_000, minimum=1_000, maximum=5_000_000)
+
+    tree = _github_tree(owner, repo, default_branch)
+    candidate_paths = [item["path"] for item in tree if _is_supported_path(item["path"])]
+    selected_paths = candidate_paths[:max_files]
+
+    cleared = clear_repo_chunks(db, tenant_id=tenant, repo_name=repo_name)
+    indexed_files = 0
+    indexed_chunks = 0
+
+    for path in selected_paths:
+        content = _github_raw_text(owner, repo, default_branch, path, max_bytes=max_file_bytes)
+        if not content:
+            continue
+        chunks = _chunk_text(content, chunk_size=chunk_size, overlap=overlap)
+        chunk_count = 0
+        for idx, chunk in enumerate(chunks):
+            if chunk_count >= max_chunks_per_file:
+                break
+            cleaned = " ".join(chunk.split())
+            if not cleaned:
+                continue
+            embedding = _embed_text(cleaned)
+            upsert_code_chunk(
+                db,
+                tenant_id=tenant,
+                repo_name=repo_name,
+                file_path=path,
+                chunk_index=idx,
+                content=chunk[:2000],
+                embedding_literal=_embedding_literal(embedding),
+                metadata={
+                    "source": "github",
+                    "source_repo": source_repo,
+                    "repo_url": repo_url,
+                    "branch": default_branch,
+                    "chunk_size": len(chunk),
+                },
+            )
+            chunk_count += 1
+            indexed_chunks += 1
+        if chunk_count > 0:
+            indexed_files += 1
+
+    commit_chunks(db)
+    log_event(
+        "rag_github_index_completed",
+        tenant_id=tenant,
+        repo_name=source_repo,
+        branch=default_branch,
+        indexed_files=indexed_files,
+        indexed_chunks=indexed_chunks,
+        cleared_chunks=cleared,
+    )
+    return {
+        "tenant_id": tenant,
+        "repo_name": source_repo,
+        "storage_repo_name": repo_name,
+        "branch": default_branch,
+        "indexed_files": indexed_files,
+        "indexed_chunks": indexed_chunks,
+        "cleared_chunks": cleared,
+        "skipped": False,
+    }
+
+
+def _parse_github_repo(repo_url: str) -> tuple[str, str]:
+    parsed = urllib_parse.urlparse(repo_url.strip())
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        raise ValueError("Only github.com repositories are supported")
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(parts) < 2:
+        raise ValueError("Invalid GitHub repository URL")
+    owner = parts[0]
+    repo = parts[1].removesuffix(".git")
+    return owner, repo
+
+
+def _github_default_branch(owner: str, repo: str) -> str:
+    payload = _github_json(f"https://api.github.com/repos/{owner}/{repo}")
+    branch = str(payload.get("default_branch", "")).strip()
+    if not branch:
+        raise ValueError("Unable to resolve default branch from GitHub")
+    return branch
+
+
+def _github_tree(owner: str, repo: str, ref: str) -> list[dict[str, Any]]:
+    safe_ref = urllib_parse.quote(ref, safe="")
+    payload = _github_json(f"https://api.github.com/repos/{owner}/{repo}/git/trees/{safe_ref}?recursive=1")
+    tree = payload.get("tree", [])
+    if not isinstance(tree, list):
+        return []
+    blobs: list[dict[str, Any]] = []
+    for item in tree:
+        if isinstance(item, dict) and item.get("type") == "blob" and isinstance(item.get("path"), str):
+            blobs.append(item)
+    return blobs
+
+
+def _github_raw_text(owner: str, repo: str, ref: str, file_path: str, *, max_bytes: int) -> str:
+    quoted_path = urllib_parse.quote(file_path, safe="/-_.~")
+    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{quoted_path}"
+    data = _http_get_bytes(url)
+    if not data or len(data) > max_bytes:
+        return ""
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            return data.decode(encoding, errors="ignore")
+        except Exception:
+            continue
+    return ""
+
+
+def _github_json(url: str) -> dict[str, Any]:
+    data = _http_get_bytes(url)
+    if not data:
+        raise ValueError(f"GitHub request failed: {url}")
+    payload = json.loads(data.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Unexpected GitHub response for {url}")
+    return payload
+
+
+def _http_get_bytes(url: str) -> bytes:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "aura-rag-ingestor",
+    }
+    token = os.getenv("GITHUB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib_request.Request(url=url, headers=headers, method="GET")
+    try:
+        with urllib_request.urlopen(req, timeout=20) as response:  # noqa: S310
+            return response.read()
+    except urllib_error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise ValueError(f"GitHub HTTP {exc.code} for {url}: {detail[:200]}") from exc
+    except urllib_error.URLError as exc:
+        raise ValueError(f"GitHub connection failed for {url}: {exc.reason}") from exc
+
+
+def _is_supported_path(path: str) -> bool:
+    clean = path.strip()
+    if not clean:
+        return False
+    parts = clean.split("/")
+    if any(part in _SKIP_DIRS for part in parts):
+        return False
+    suffix = Path(clean).suffix.lower()
+    return suffix in _TEXT_FILE_EXTENSIONS
 
 
 def _iter_source_files(root: Path, *, max_files: int) -> list[Path]:

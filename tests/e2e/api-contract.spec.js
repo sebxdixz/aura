@@ -284,6 +284,8 @@ test.describe("AURA API contract", () => {
   });
 
   test("accepts text, pdf, audio, and image attachments with triage solution output", async ({ request }) => {
+    test.setTimeout(180_000);
+
     const tenant = uniqueTenant("api-multimodal");
     const reporter = `${tenant}@demo.com`;
 

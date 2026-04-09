@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 
 CREATE TABLE IF NOT EXISTS code_chunks (
     id          BIGSERIAL PRIMARY KEY,
+    tenant_id   VARCHAR(100) NOT NULL,
     repo_name   VARCHAR(120) NOT NULL,
     file_path   TEXT         NOT NULL,
     chunk_index INTEGER      NOT NULL,
@@ -45,7 +46,7 @@ CREATE TABLE IF NOT EXISTS code_chunks (
     embedding   vector(1536) NOT NULL,
     metadata    JSONB        NOT NULL DEFAULT '{}'::jsonb,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    UNIQUE (repo_name, file_path, chunk_index)
+    UNIQUE (tenant_id, repo_name, file_path, chunk_index)
 );
 
 -- Indexes for tenant isolation and common query patterns
@@ -56,4 +57,5 @@ CREATE INDEX IF NOT EXISTS idx_audit_tenant        ON audit_logs (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_audit_incident      ON audit_logs (incident_id);
 CREATE INDEX IF NOT EXISTS idx_audit_stage         ON audit_logs (stage);
 CREATE INDEX IF NOT EXISTS idx_code_chunks_repo    ON code_chunks (repo_name);
+CREATE INDEX IF NOT EXISTS idx_code_chunks_tenant  ON code_chunks (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_code_chunks_embed   ON code_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);

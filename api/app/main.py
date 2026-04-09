@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+import json
+
 from pydantic import BaseModel
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -19,7 +22,7 @@ from .models import (
     TenantRecord,
 )
 from .observability import log_event, metrics_snapshot
-from .rag import auto_index_enabled, rag_status, reindex_codebase
+from .rag import auto_index_enabled, index_github_repository, rag_status, reindex_codebase
 from .services import (
     create_incident_id,
     create_ticket,
@@ -50,6 +53,11 @@ app.add_middleware(
 class TenantRegisterPayload(BaseModel):
     tenant_id: str
     name: str
+
+class GithubSyncPayload(BaseModel):
+    tenant_id: str
+    repo_url: str
+    branch: str | None = None
 
 
 @app.on_event("startup")
@@ -186,6 +194,7 @@ async def submit_incident(
         return incident
 
     triage = run_triage(
+        tenant_id=tenant_id,
         description=description,
         has_file=has_file,
         attachment_filename=file_meta.filename if file_meta else None,
@@ -296,11 +305,76 @@ def api_tenant_insights_summary(
 
 
 @app.get("/api/rag/status")
-def api_rag_status(db: Session = Depends(get_db)) -> dict[str, object]:
-    return rag_status(db)
+def api_rag_status(tenant_id: str | None = None, db: Session = Depends(get_db)) -> dict[str, object]:
+    return rag_status(db, tenant_id=tenant_id)
 
 
 @app.post("/api/rag/reindex")
-def api_rag_reindex(db: Session = Depends(get_db)) -> dict[str, object]:
+def api_rag_reindex(
+    tenant_id: str,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
     log_event("rag_reindex_triggered")
-    return reindex_codebase(db)
+    return reindex_codebase(db, tenant_id=tenant_id)
+
+
+@app.post("/api/rag/github-sync")
+def api_rag_github_sync(
+    payload: GithubSyncPayload,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    tenant_id = payload.tenant_id.strip()
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id is required")
+    if not payload.repo_url.strip():
+        raise HTTPException(status_code=400, detail="repo_url is required")
+
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    log_event("github_sync_triggered", tenant_id=tenant_id, url=payload.repo_url)
+    try:
+        return index_github_repository(
+            db,
+            tenant_id=tenant_id,
+            repo_url=payload.repo_url.strip(),
+            branch=payload.branch,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _assert_tenant_admin(tenant_id: str, provided_key: str | None) -> None:
+    token = (provided_key or "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="x-tenant-admin-key header is required")
+
+    per_tenant_raw = os.getenv("TENANT_ADMIN_KEYS_JSON", "").strip()
+    if per_tenant_raw:
+        try:
+            mapping = json.loads(per_tenant_raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail="TENANT_ADMIN_KEYS_JSON is invalid JSON") from exc
+        if isinstance(mapping, dict):
+            expected = str(mapping.get(tenant_id, "")).strip()
+            if expected and token == expected:
+                return
+
+    fallback = os.getenv("TENANT_ADMIN_KEY", "").strip()
+    if fallback and token == fallback:
+        return
+    raise HTTPException(status_code=403, detail="invalid tenant admin credentials")
+
+@app.post("/api/auth/verify")
+def api_auth_verify(
+    tenant_id: str = Header(..., alias="x-tenant-id"),
+    x_tenant_admin_key: str = Header(...)
+) -> dict:
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    return {"status": "ok", "tenant_id": tenant_id}
+

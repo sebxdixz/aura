@@ -17,6 +17,38 @@ services:
       timeout: 5s
       retries: 5
 
+  mcp_bridge:
+    build:
+      context: ./mcp-bridge
+    container_name: aura-mcp-bridge
+    restart: on-failure
+    env_file:
+      - .env
+    environment:
+      MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
+      MCP_BRIDGE_TIMEOUT_MS: ${MCP_BRIDGE_TIMEOUT_MS:-35000}
+      JIRA_MCP_COMMAND: ${JIRA_MCP_COMMAND:-mcp-atlassian}
+      JIRA_MCP_ARGS: ${JIRA_MCP_ARGS:-}
+      JIRA_DEFAULT_ISSUE_TYPE: ${JIRA_DEFAULT_ISSUE_TYPE:-Bug}
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-AURA}
+      JIRA_URL: ${JIRA_URL:-}
+      JIRA_USERNAME: ${JIRA_USERNAME:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      JIRA_PERSONAL_TOKEN: ${JIRA_PERSONAL_TOKEN:-}
+      CONFLUENCE_URL: ${CONFLUENCE_URL:-}
+      CONFLUENCE_USERNAME: ${CONFLUENCE_USERNAME:-}
+      CONFLUENCE_API_TOKEN: ${CONFLUENCE_API_TOKEN:-}
+      SLACK_MCP_COMMAND: ${SLACK_MCP_COMMAND:-npx}
+      SLACK_MCP_ARGS: ${SLACK_MCP_ARGS:--y @modelcontextprotocol/server-slack}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_TEAM_ID: ${SLACK_TEAM_ID:-}
+      SLACK_DEFAULT_CHANNEL_ID: ${SLACK_DEFAULT_CHANNEL_ID:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: ./api
@@ -36,13 +68,17 @@ services:
       RAG_TOP_K: ${RAG_TOP_K:-4}
       RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
+      MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
-      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:ro
+      - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:rw
     depends_on:
       db:
+        condition: service_healthy
+      mcp_bridge:
         condition: service_healthy
 
   web:

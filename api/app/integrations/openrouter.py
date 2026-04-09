@@ -80,19 +80,23 @@ def plan_react_actions(context: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _build_prompt(context: dict[str, Any]) -> str:
+    jira_server = os.getenv("MCP_JIRA_SERVER", "jira").strip() or "jira"
+    jira_tool = os.getenv("MCP_JIRA_TOOL", "jira_create_issue").strip() or "jira_create_issue"
+    slack_server = os.getenv("MCP_SLACK_SERVER", "slack").strip() or "slack"
+    slack_tool = os.getenv("MCP_SLACK_TOOL", "slack_post_message").strip() or "slack_post_message"
     return (
         "Create an action plan for two MCP tool calls: Jira ticket + Slack notify.\n\n"
         "Return JSON with exactly this schema:\n"
         "{\n"
         '  "reasoning": "short reason",\n'
         '  "ticket_tool": {\n'
-        '    "server": "jira",\n'
-        '    "tool": "create_issue",\n'
+        f'    "server": "{jira_server}",\n'
+        f'    "tool": "{jira_tool}",\n'
         '    "arguments": { ... }\n'
         "  },\n"
         '  "slack_tool": {\n'
-        '    "server": "slack",\n'
-        '    "tool": "post_message",\n'
+        f'    "server": "{slack_server}",\n'
+        f'    "tool": "{slack_tool}",\n'
         '    "arguments": { ... }\n'
         "  }\n"
         "}\n\n"
@@ -102,4 +106,5 @@ def _build_prompt(context: dict[str, Any]) -> str:
         "- Keep arguments concise.\n"
         "- Ensure severity and service are included in both tools.\n"
         "- Include incident_id and tenant_id.\n"
+        "- Use the provided server/tool names exactly unless impossible.\n"
     )

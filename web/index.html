@@ -986,9 +986,96 @@
         .form-row { grid-template-columns: 1fr; }
         .topbar { padding: 0 20px; }
       }
+
+      /* ═══ LOGIN ══════════════════════════════════════════════════ */
+      #app { display: none; }
+      body.logged-in #app { display: flex; }
+      body.logged-in #loginView { display: none; }
+
+      .login-overlay {
+        position: fixed; inset: 0; z-index: 9999;
+        background: var(--g100);
+        display: flex; align-items: center; justify-content: center;
+        padding: 24px;
+      }
+
+      .login-card {
+        width: min(440px, 100%);
+        background: var(--white);
+        border: 1px solid var(--g200);
+        box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+      }
+
+      .login-header {
+        padding: 32px;
+        border-bottom: 1px solid var(--g150);
+        text-align: center;
+      }
+
+      .login-logo {
+        font-size: 24px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; margin-bottom: 8px;
+        color: var(--black);
+      }
+
+      .login-body { padding: 32px; }
+      .login-actions { padding: 20px 32px; border-top: 1px solid var(--g150); background: var(--g50); display: flex; justify-content: flex-end; }
+      .logout-btn {
+        margin-left: 8px;
+        font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--g400);
+        letter-spacing: 1px; text-transform: uppercase; background: none; border: none; cursor: pointer;
+      }
+      .logout-btn:hover { color: var(--black); }
     </style>
   </head>
   <body>
+    <div id="loginView" class="login-overlay">
+      <div class="login-card">
+        <div class="login-header">
+          <div class="login-logo">AURA</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--g500);letter-spacing:2px;text-transform:uppercase;" data-i18n="login_sub">Admin Portal Login</div>
+        </div>
+        <form id="loginForm">
+          <div class="login-body form-grid" style="gap:16px;">
+            <div class="field">
+              <div class="field-label" data-i18n="login_tenant">Tenant ID</div>
+              <input id="l_tenant" data-i18n-ph="ph_tenant" placeholder="e.g. acme-corp" autocomplete="username" required />
+            </div>
+            <div class="field">
+              <div class="field-label" data-i18n="login_key">Access Key</div>
+              <input id="l_key" type="password" placeholder="••••••••" autocomplete="current-password" required />
+            </div>
+          </div>
+          <div class="login-actions" style="display:flex; justify-content:space-between; align-items:center;">
+            <a href="#" id="toggleRegister" style="font-family:var(--font-mono); font-size:10px; color:var(--g500);">Create Workspace</a>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-ghost" id="btnDemoLogin">Demo Judge</button>
+              <button type="submit" class="btn btn-primary" data-i18n="btn_login">Authenticate</button>
+            </div>
+          </div>
+        </form>
+
+        <form id="registerForm" style="display:none;">
+          <div class="login-body form-grid" style="gap:16px;">
+            <div class="field">
+              <div class="field-label">New Tenant ID</div>
+              <input id="r_tenant" placeholder="e.g. acme-corp" required />
+            </div>
+            <div class="field">
+              <div class="field-label">Organization Name</div>
+              <input id="r_name" placeholder="e.g. Acme Corporation" required />
+            </div>
+            <div style="font-family:var(--font-mono); font-size:9px; color:var(--g500); grid-column:1/-1;">
+              Note: After creating, you must coordinate with the Sysadmin to add your Access Key to the server's .env file.
+            </div>
+          </div>
+          <div class="login-actions" style="display:flex; justify-content:space-between; align-items:center;">
+            <a href="#" id="toggleLogin" style="font-family:var(--font-mono); font-size:10px; color:var(--g500);">Back to Login</a>
+            <button type="submit" class="btn btn-primary">Register</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="app">
 
       <!-- ═══ SIDEBAR ═══════════════════════════════════════════ -->
@@ -1020,6 +1107,10 @@
 
         <div class="nav-label" style="margin-top:8px;" data-i18n="nav_system">System</div>
 
+        <div class="nav-item" data-view="config" id="nav-config">
+          <span data-i18n="nav_config">Settings (RAG)</span>
+          <span class="nav-num">05</span>
+        </div>
         <div class="nav-item" onclick="window.open('http://localhost:8000/docs','_blank')">
           <span data-i18n="nav_api">API Reference</span>
           <span class="nav-num">↗</span>
@@ -1059,6 +1150,7 @@
               <span class="tenant-chip-dot"></span>
               <span id="tenantChipLabel" data-i18n="select_workspace">SELECT WORKSPACE</span>
             </div>
+            <button class="logout-btn" id="logoutBtn" data-i18n="logout" style="display:none;">LOGOUT</button>
           </div>
         </div>
 
@@ -1239,6 +1331,40 @@
           </div>
         </div>
 
+        <!-- ══ CONFIG ════════════════════════════════════════════ -->
+        <div class="view" id="view-config">
+          <div class="page-header">
+            <div class="page-overline" data-i18n="conf_overline">System Configuration</div>
+            <div class="page-title page-title-sm" data-i18n="nav_config">Settings</div>
+          </div>
+
+          <div class="two-col">
+            <div>
+              <div class="section-block">
+                <div class="section-header">
+                  <span class="section-label" data-i18n="conf_rag">GitHub RAG Synchronization</span>
+                </div>
+                <form id="githubSyncForm" class="form-grid">
+                  <div class="field">
+                    <div class="field-label" data-i18n="conf_url">Public Repository URL</div>
+                    <input id="github_url" placeholder="https://github.com/user/repo" required />
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="btnSyncGithub" data-i18n="btn_sync">Sync & Reindex</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            
+            <div class="section-block" id="syncResultBlock" style="display:none;">
+              <div class="section-header">
+                <span class="section-label" data-i18n="result">Result</span>
+              </div>
+              <pre id="syncResultOut" style="font-family:var(--font-mono);font-size:12px;color:var(--black);background:var(--g50);padding:16px;overflow:auto;"></pre>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1327,6 +1453,17 @@
         crumb_intake:      'REPORT / INCIDENT',
         crumb_incidents:   'INCIDENTS',
         crumb_tenants:     'TENANTS',
+        crumb_config:      'SETTINGS',
+        login_sub:         'Admin Portal Login',
+        nav_config:        'Settings (RAG)',
+        conf_overline:     'System Configuration',
+        conf_rag:          'GitHub RAG Synchronization',
+        conf_url:          'Public Repository URL',
+        btn_sync:          'Sync & Reindex',
+        login_tenant:      'Tenant ID',
+        login_key:         'Access Key',
+        btn_login:         'Authenticate',
+        logout:            'LOGOUT',
         /* table headers */
         th_id:             'Incident ID',
         th_desc:           'Description',
@@ -1420,6 +1557,17 @@
         crumb_intake:      'REPORTAR / INCIDENTE',
         crumb_incidents:   'INCIDENTES',
         crumb_tenants:     'INQUILINOS',
+        crumb_config:      'CONFIGURACIÓN',
+        login_sub:         'Portal de Administración',
+        nav_config:        'Ajustes (RAG)',
+        conf_overline:     'Configuración de Sistema',
+        conf_rag:          'Sincronización RAG GitHub',
+        conf_url:          'URL de Repositorio Público',
+        btn_sync:          'Sincronizar y Reindexar',
+        login_tenant:      'ID de Inquilino',
+        login_key:         'Clave de Acceso',
+        btn_login:         'Autenticar',
+        logout:            'CERRAR SESIÓN',
         th_id:             'ID Incidente',
         th_desc:           'Descripción',
         th_sev:            'Severidad',
@@ -1505,13 +1653,126 @@
     let currentTenant = null;
     let lastIncidentId = null;
 
+    /* ═══ LOGIN LOGIC ═══════════════════════════════════════════ */
+    const savedAdmin = localStorage.getItem('aura_admin_tenant');
+    if (savedAdmin) {
+      document.body.classList.add('logged-in');
+      currentTenant = savedAdmin;
+      document.getElementById('tenantChip').classList.add('has-tenant');
+      document.getElementById('tenantChipLabel').textContent = savedAdmin.toUpperCase();
+      document.getElementById('logoutBtn').style.display = 'block';
+      // disable tenant chip logic for security/UI lock
+      document.getElementById('tenantChip').style.pointerEvents = 'none';
+      if (document.getElementById('f_tid')) {
+        document.getElementById('f_tid').value = savedAdmin;
+      }
+    } else {
+      document.body.classList.remove('logged-in');
+    }
+
+    document.getElementById('toggleRegister')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('loginForm').style.display = 'none';
+      document.getElementById('registerForm').style.display = 'block';
+    });
+
+    document.getElementById('toggleLogin')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('registerForm').style.display = 'none';
+      document.getElementById('loginForm').style.display = 'block';
+    });
+
+    document.getElementById('btnDemoLogin')?.addEventListener('click', () => {
+      document.getElementById('l_tenant').value = 'eeden-app';
+      document.getElementById('l_key').value = 'hackathon2024';
+      document.querySelector('#loginForm button[type="submit"]').click();
+    });
+
+    document.getElementById('registerForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const tid = document.getElementById('r_tenant').value.trim();
+      const name = document.getElementById('r_name').value.trim();
+      if (!tid || !name) return;
+      const btn = e.target.querySelector('button[type="submit"]');
+      const og = btn.textContent;
+      btn.textContent = 'Registering...'; btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/tenants/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tid, name: name })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail);
+        toast('Workspace created. Coordinate admin key.', 'ok');
+        document.getElementById('toggleLogin').click();
+        document.getElementById('l_tenant').value = tid;
+      } catch(err) {
+        toast(err.message, 'err');
+      } finally {
+        btn.textContent = og; btn.disabled = false;
+      }
+    });
+
+    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const tid = document.getElementById('l_tenant').value.trim();
+      const key = document.getElementById('l_key').value.trim();
+      if (!tid || !key) return;
+
+      const btn = e.target.querySelector('button[type="submit"]');
+      const ogText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+
+      try {
+        const res = await fetch(`${API}/api/auth/verify`, {
+          method: 'POST',
+          headers: {
+            'x-tenant-id': tid,
+            'x-tenant-admin-key': key
+          }
+        });
+        if (!res.ok) throw new Error('Invalid Credentials');
+
+        localStorage.setItem('aura_admin_tenant', tid);
+        localStorage.setItem('aura_admin_key', key);
+        currentTenant = tid;
+        document.body.classList.add('logged-in');
+        document.getElementById('tenantChip').classList.add('has-tenant');
+        document.getElementById('tenantChipLabel').textContent = tid.toUpperCase();
+        document.getElementById('logoutBtn').style.display = 'block';
+        document.getElementById('tenantChip').style.pointerEvents = 'none';
+        if (document.getElementById('f_tid')) {
+          document.getElementById('f_tid').value = tid;
+        }
+        toast(`${t('toast_workspace')}: ${tid.toUpperCase()}`, 'ok');
+        loadDashboard();
+        if (document.getElementById('view-incidents').classList.contains('active')) {
+          loadIncidents();
+        }
+      } catch (err) {
+        toast(err.message, 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = ogText;
+      }
+    });
+
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
+      localStorage.removeItem('aura_admin_tenant');
+      localStorage.removeItem('aura_admin_key');
+      location.reload();
+    });
+
     /* ═══ NAVIGATION ════════════════════════════════════════════ */
-    const VIEWS = ['dashboard','intake','incidents','tenants'];
+    const VIEWS = ['dashboard','intake','incidents','tenants','config'];
     const CRUMB_KEYS = {
       dashboard: 'crumb_dashboard',
       intake:    'crumb_intake',
       incidents: 'crumb_incidents',
       tenants:   'crumb_tenants',
+      config:    'crumb_config',
     };
 
     function navigate(v) {
@@ -1926,6 +2187,42 @@
       updateIntakeUrl(tid);
       navigate('intake');
     }
+
+    /* ═══ SETTINGS / GITHUB SYNC ══════════════════════════════════ */
+    document.getElementById('githubSyncForm')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('btnSyncGithub');
+      const url = document.getElementById('github_url').value.trim();
+      const outBlock = document.getElementById('syncResultBlock');
+      const outText = document.getElementById('syncResultOut');
+
+      btn.disabled = true;
+      btn.textContent = 'Syncing...';
+      outBlock.style.display = 'block';
+      outText.textContent = `Cloning ${url} and reindexing... this may take a moment.`;
+
+      try {
+        const res = await fetch(`${API}/api/rag/github-sync`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-admin-key': localStorage.getItem('aura_admin_key')
+          },
+          body: JSON.stringify({ tenant_id: currentTenant, repo_url: url })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Git Sync Failed');
+        
+        outText.textContent = JSON.stringify(data, null, 2);
+        toast('RAG Synced Successfully', 'ok');
+      } catch (err) {
+        outText.textContent = String(err);
+        toast('Sync Failed', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = t('btn_sync');
+      }
+    });
 
     /* ═══ INIT ═══════════════════════════════════════════════════ */
     applyTranslations();

@@ -155,7 +155,7 @@ def _normalize_plan(raw_plan: dict[str, Any] | None, *, context: dict[str, Any])
 def _default_ticket_tool(context: dict[str, Any]) -> dict[str, Any]:
     return {
         "server": os.getenv("MCP_JIRA_SERVER", "jira"),
-        "tool": os.getenv("MCP_JIRA_TOOL", "create_issue"),
+        "tool": os.getenv("MCP_JIRA_TOOL", "jira_create_issue"),
         "arguments": {
             "incident_id": context["incident_id"],
             "tenant_id": context["tenant_id"],
@@ -173,7 +173,7 @@ def _default_ticket_tool(context: dict[str, Any]) -> dict[str, Any]:
 def _default_slack_tool(context: dict[str, Any]) -> dict[str, Any]:
     return {
         "server": os.getenv("MCP_SLACK_SERVER", "slack"),
-        "tool": os.getenv("MCP_SLACK_TOOL", "post_message"),
+        "tool": os.getenv("MCP_SLACK_TOOL", "slack_post_message"),
         "arguments": {
             "incident_id": context["incident_id"],
             "tenant_id": context["tenant_id"],
@@ -200,4 +200,3 @@ def _merge_tool(candidate: Any, fallback: dict[str, Any]) -> dict[str, Any]:
             args[str(key)] = value
 
     return {"server": server, "tool": tool, "arguments": args}
-

@@ -122,6 +122,7 @@ def calculate_severity(description: str, has_file: bool) -> tuple[str, int, str]
 
 
 def run_triage(
+    tenant_id: str | None,
     description: str,
     has_file: bool,
     attachment_filename: str | None = None,
@@ -141,7 +142,7 @@ def run_triage(
     code_context: list[dict[str, object]] = []
     if db is not None:
         try:
-            code_context = retrieve_code_context(db, query_text=rag_query)
+            code_context = retrieve_code_context(db, tenant_id=tenant_id, query_text=rag_query)
         except Exception:
             code_context = []
 

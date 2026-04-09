@@ -6,7 +6,7 @@
   "scripts": {
     "test": "npm run test:e2e",
     "test:e2e": "node scripts/wait-api.js && playwright test tests/e2e/api-contract.spec.js",
-    "test:e2e:all": "node scripts/wait-api.js && set RUN_WEB_E2E=true&& playwright test",
+    "test:e2e:all": "npm run test:e2e:api && npm run test:e2e:web",
     "test:e2e:web": "node scripts/wait-api.js && set RUN_WEB_E2E=true&& playwright test tests/e2e/web-intake.spec.js",
     "test:e2e:api": "node scripts/wait-api.js && playwright test tests/e2e/api-contract.spec.js",
     "test:e2e:headed": "playwright test --headed",

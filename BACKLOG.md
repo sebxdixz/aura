@@ -31,8 +31,10 @@ Backlog operativo para construir AURA con foco en entrega de hackathon.
   - audio (`audio/wav`, `audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/x-m4a`, `audio/webm`, `audio/ogg`)
 - RAG operativo sobre codebase e-commerce con vector DB en el mismo Docker:
   - Postgres + `pgvector` en servicio `db`
-  - indexado de chunks en tabla `code_chunks`
+  - indexado de chunks en tabla `code_chunks` con aislamiento por `tenant_id`
   - retrieval en triage para enriquecer `relevant_files`
+  - sync desde GitHub directo a vector DB (sin `git clone`)
+  - endpoints de sync/reindex protegidos por credencial admin de tenant (`x-tenant-admin-key`)
 - Frontend separado por rol:
   - `web` expone solo portal de reporte (`/intake/{tenant}`)
   - `web_dashboard` expone dashboard de operaciones en puerto separado
@@ -40,6 +42,10 @@ Backlog operativo para construir AURA con foco en entrega de hackathon.
   - planificacion con OpenRouter
   - ejecucion de acciones Jira/Slack via MCP
   - fallback al flujo directo existente
+- MCP bridge operativo en Docker (`mcp_bridge`):
+  - endpoint HTTP interno `http://mcp_bridge:8080/invoke`
+  - adaptador de herramientas `create_issue/post_message` -> `jira_create_issue/slack_post_message`
+  - compatible con falta de credenciales (degrada con fallback controlado)
 - Pipeline LLM de dos etapas disponible por `env`:
   - etapa 1 multimodal (`OPENROUTER_MULTIMODAL_MODEL`, default `gemini-2.5-flash`) para extraer evidencia
   - etapa 2 analitica (`OPENROUTER_ANALYSIS_MODEL`) para construir triage tecnico final

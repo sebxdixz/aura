@@ -1,0 +1,39 @@
+{
+  "name": "sebastiandiaz-portfolio",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "description": "Sebastian Diaz - Creative Developer Portfolio",
+  "scripts": {
+    "dev": "node ./node_modules/expo/bin/cli start --web",
+    "web": "node ./node_modules/expo/bin/cli start --web",
+    "start": "node ./node_modules/expo/bin/cli start",
+    "android": "node ./node_modules/expo/bin/cli start --android",
+    "ios": "node ./node_modules/expo/bin/cli start --ios",
+    "build": "node ./node_modules/expo/bin/cli export --platform web",
+    "preview": "npx serve@latest dist"
+  },
+  "dependencies": {
+    "expo": "^51.0.0",
+    "expo-av": "^14.0.0",
+    "expo-constants": "~16.0.2",
+    "expo-linking": "~6.3.1",
+    "expo-router": "^3.0.0",
+    "expo-status-bar": "^1.11.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-native": "^0.73.0",
+    "react-native-gesture-handler": "^2.28.0",
+    "react-native-safe-area-context": "4.10.5",
+    "react-native-screens": "3.31.1",
+    "react-native-web": "^0.19.0",
+    "typescript": "~5.3.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "babel-plugin-module-resolver": "^5.0.3"
+  },
+  "expo": {
+    "plugins": []
+  }
+}

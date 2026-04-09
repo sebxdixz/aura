@@ -15,6 +15,7 @@ def ensure_rag_schema(db: Session, *, embedding_dim: int = 1536) -> None:
             f"""
             CREATE TABLE IF NOT EXISTS code_chunks (
                 id BIGSERIAL PRIMARY KEY,
+                tenant_id VARCHAR(100) NOT NULL DEFAULT 'default',
                 repo_name VARCHAR(120) NOT NULL,
                 file_path TEXT NOT NULL,
                 chunk_index INTEGER NOT NULL,
@@ -22,8 +23,24 @@ def ensure_rag_schema(db: Session, *, embedding_dim: int = 1536) -> None:
                 embedding vector({dim}) NOT NULL,
                 metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (repo_name, file_path, chunk_index)
+                UNIQUE (tenant_id, repo_name, file_path, chunk_index)
             )
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            ALTER TABLE code_chunks
+            ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(100) NOT NULL DEFAULT 'default'
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS idx_code_chunks_tenant
+            ON code_chunks (tenant_id)
             """
         )
     )
@@ -32,6 +49,16 @@ def ensure_rag_schema(db: Session, *, embedding_dim: int = 1536) -> None:
             """
             CREATE INDEX IF NOT EXISTS idx_code_chunks_repo
             ON code_chunks (repo_name)
+            """
+        )
+    )
+    # Migrate legacy uniqueness (repo_name, file_path, chunk_index) to tenant-aware unique key.
+    db.execute(text("ALTER TABLE code_chunks DROP CONSTRAINT IF EXISTS code_chunks_repo_name_file_path_chunk_index_key"))
+    db.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_code_chunks_tenant_repo_file_chunk
+            ON code_chunks (tenant_id, repo_name, file_path, chunk_index)
             """
         )
     )
@@ -53,10 +80,10 @@ def ensure_rag_schema(db: Session, *, embedding_dim: int = 1536) -> None:
         db.rollback()
 
 
-def clear_repo_chunks(db: Session, *, repo_name: str) -> int:
+def clear_repo_chunks(db: Session, *, tenant_id: str, repo_name: str) -> int:
     result = db.execute(
-        text("DELETE FROM code_chunks WHERE repo_name = :repo_name"),
-        {"repo_name": repo_name},
+        text("DELETE FROM code_chunks WHERE tenant_id = :tenant_id AND repo_name = :repo_name"),
+        {"tenant_id": tenant_id, "repo_name": repo_name},
     )
     db.commit()
     return int(result.rowcount or 0)
@@ -65,6 +92,7 @@ def clear_repo_chunks(db: Session, *, repo_name: str) -> int:
 def upsert_code_chunk(
     db: Session,
     *,
+    tenant_id: str,
     repo_name: str,
     file_path: str,
     chunk_index: int,
@@ -76,19 +104,20 @@ def upsert_code_chunk(
         text(
             """
             INSERT INTO code_chunks (
-                repo_name, file_path, chunk_index, content, embedding, metadata
+                tenant_id, repo_name, file_path, chunk_index, content, embedding, metadata
             ) VALUES (
-                :repo_name, :file_path, :chunk_index, :content,
+                :tenant_id, :repo_name, :file_path, :chunk_index, :content,
                 CAST(:embedding_literal AS vector),
                 CAST(:metadata AS jsonb)
             )
-            ON CONFLICT (repo_name, file_path, chunk_index) DO UPDATE
+            ON CONFLICT (tenant_id, repo_name, file_path, chunk_index) DO UPDATE
             SET content = EXCLUDED.content,
                 embedding = EXCLUDED.embedding,
                 metadata = EXCLUDED.metadata
             """
         ),
         {
+            "tenant_id": tenant_id,
             "repo_name": repo_name,
             "file_path": file_path,
             "chunk_index": chunk_index,
@@ -106,6 +135,7 @@ def commit_chunks(db: Session) -> None:
 def search_code_chunks(
     db: Session,
     *,
+    tenant_id: str,
     repo_name: str,
     embedding_literal: str,
     top_k: int = 4,
@@ -121,12 +151,13 @@ def search_code_chunks(
                 metadata,
                 1 - (embedding <=> CAST(:embedding_literal AS vector)) AS similarity
             FROM code_chunks
-            WHERE repo_name = :repo_name
+            WHERE tenant_id = :tenant_id AND repo_name = :repo_name
             ORDER BY embedding <=> CAST(:embedding_literal AS vector)
             LIMIT :top_k
             """
         ),
         {
+            "tenant_id": tenant_id,
             "repo_name": repo_name,
             "embedding_literal": embedding_literal,
             "top_k": safe_k,
@@ -148,9 +179,9 @@ def search_code_chunks(
     return results
 
 
-def count_repo_chunks(db: Session, *, repo_name: str) -> int:
+def count_repo_chunks(db: Session, *, tenant_id: str, repo_name: str) -> int:
     row = db.execute(
-        text("SELECT COUNT(*) AS total FROM code_chunks WHERE repo_name = :repo_name"),
-        {"repo_name": repo_name},
+        text("SELECT COUNT(*) AS total FROM code_chunks WHERE tenant_id = :tenant_id AND repo_name = :repo_name"),
+        {"tenant_id": tenant_id, "repo_name": repo_name},
     ).fetchone()
     return int(row.total if row else 0)
