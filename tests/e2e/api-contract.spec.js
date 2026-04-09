@@ -266,4 +266,42 @@ test.describe("AURA API contract", () => {
     expect(listA.every((item) => item.tenant_id === tenantA)).toBeTruthy();
     expect(listB.every((item) => item.tenant_id === tenantB)).toBeTruthy();
   });
+
+  test("multi-ticket intelligence links related incidents and detects recurrence", async ({ request }) => {
+    const tenant = uniqueTenant("api-mti");
+    await request.post(`${API_BASE_URL}/api/tenants/register`, {
+      data: { tenant_id: tenant, name: `Tenant ${tenant}` },
+    });
+
+    const reporter = `${tenant}@demo.com`;
+    const descriptions = [
+      "Customers cannot complete payment in checkout. HTTP 500 after clicking pay.",
+      "Payment failed in checkout with 500 from checkout-service.",
+      "Users report checkout payment timeout and internal server error.",
+    ];
+
+    const incidents = [];
+    for (const description of descriptions) {
+      const res = await request.post(`${API_BASE_URL}/api/incidents/submit`, {
+        multipart: {
+          tenant_id: tenant,
+          reporter_email: reporter,
+          description,
+          attachment: {
+            name: "incident.log",
+            mimeType: "text/plain",
+            buffer: Buffer.from("checkout-service payment failed HTTP 500 timeout", "utf-8"),
+          },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+      incidents.push(await res.json());
+    }
+
+    const latest = incidents[2];
+    expect(Array.isArray(latest.triage.related_incident_ids)).toBeTruthy();
+    expect(latest.triage.related_incident_ids.length).toBeGreaterThan(0);
+    expect(Number(latest.triage.recurrence_count_30d)).toBeGreaterThan(0);
+    expect(String(latest.triage.multi_ticket_influence_reasoning || "").length).toBeGreaterThan(0);
+  });
 });

@@ -41,6 +41,29 @@ RUNTIME_MIGRATIONS = [
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS evidence_from_attachment JSONB NOT NULL DEFAULT '[]'::jsonb",
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS attachment_signals JSONB NOT NULL DEFAULT '{}'::jsonb",
     "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS attachment_used BOOLEAN NOT NULL DEFAULT false",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS duplicate_of_incident_id VARCHAR(64)",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS cluster_id TEXT",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS recurrence_count_7d INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS recurrence_count_30d INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS related_links JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS scope_assessment TEXT",
+    "ALTER TABLE incidents ADD COLUMN IF NOT EXISTS multi_ticket_influence_reasoning TEXT",
+    (
+        "CREATE TABLE IF NOT EXISTS incident_links ("
+        "id BIGSERIAL PRIMARY KEY, "
+        "tenant_id VARCHAR(100) NOT NULL, "
+        "source_incident_id VARCHAR(64) NOT NULL, "
+        "target_incident_id VARCHAR(64) NOT NULL, "
+        "relationship_type VARCHAR(32) NOT NULL, "
+        "similarity_score DOUBLE PRECISION NOT NULL, "
+        "reasoning TEXT, "
+        "shared_signals JSONB NOT NULL DEFAULT '[]'::jsonb, "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+        ")"
+    ),
+    "CREATE INDEX IF NOT EXISTS idx_incident_links_tenant ON incident_links (tenant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_incident_links_source ON incident_links (source_incident_id)",
+    "CREATE INDEX IF NOT EXISTS idx_incident_links_target ON incident_links (target_incident_id)",
 ]
 
 

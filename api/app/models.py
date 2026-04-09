@@ -69,6 +69,11 @@ class TriageOutput(BaseModel):
     is_duplicate: bool = False
     duplicate_of_incident_id: str | None = None
     dedup_confidence: float | None = None
+    related_incident_ids: list[str] = Field(default_factory=list)
+    cluster_id: str | None = None
+    recurrence_count_7d: int = 0
+    recurrence_count_30d: int = 0
+    multi_ticket_influence_reasoning: str = ""
     root_cause_analysis: str
     proposed_fix: str
     proposed_cli_command: str
@@ -106,6 +111,16 @@ class NotificationRecord(BaseModel):
     detail: str
 
 
+class IncidentLinkRecord(BaseModel):
+    source_incident_id: str
+    target_incident_id: str
+    relationship_type: Literal["duplicate", "strongly_related", "weakly_related"]
+    similarity_score: float
+    reasoning: str = ""
+    shared_signals: list[str] = Field(default_factory=list)
+    created_at: str = Field(default_factory=utc_now_iso)
+
+
 class IncidentRecord(BaseModel):
     incident_id: str
     tenant_id: str
@@ -119,6 +134,7 @@ class IncidentRecord(BaseModel):
     triage: TriageOutput
     ticket: TicketRecord
     notifications: list[NotificationRecord] = Field(default_factory=list)
+    related_links: list[IncidentLinkRecord] = Field(default_factory=list)
 
 
 class TenantRecord(BaseModel):

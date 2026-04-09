@@ -16,12 +16,15 @@ from .insights import get_tenant_audit_logs, get_tenant_insights_summary
 from .models import (
     AuditLogRecord,
     FileMeta,
+    IncidentLinkRecord,
     IncidentRecord,
     NotificationRecord,
+    TicketRecord,
     TenantDashboard,
     TenantInsightsSummary,
     TenantRecord,
 )
+from .multi_ticket import analyze_multi_ticket_intelligence, to_link_records
 from .observability import log_event, metrics_snapshot
 from .rag import auto_index_enabled, index_github_repository, rag_status, reindex_codebase
 from .services import (
@@ -39,6 +42,7 @@ from .services import (
     save_incident,
     tenant_dashboard,
 )
+from . import repository as repo
 
 app = FastAPI(title="AURA API", version="0.4.0")
 
@@ -244,6 +248,54 @@ async def submit_incident(
     )
     log_event("incident_triaged", incident_id=incident_id, severity=triage.severity, service=triage.affected_service)
 
+    temp_incident = IncidentRecord(
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        reporter_email=reporter_email,
+        description=description,
+        file_meta=file_meta,
+        attachment=attachment_record,
+        triage=triage,
+        ticket=TicketRecord(ticket_id="pending", provider="pending", url="", status="created"),
+        notifications=[],
+        related_links=[],
+    )
+    log_event("multi_ticket_started", incident_id=incident_id, tenant_id=tenant_id)
+    multi_ticket = analyze_multi_ticket_intelligence(db, temp_incident)
+    if multi_ticket.is_duplicate and multi_ticket.duplicate_of_incident_id:
+        log_event("duplicate_detected", incident_id=incident_id, tenant_id=tenant_id, duplicate_of=multi_ticket.duplicate_of_incident_id)
+    if multi_ticket.related_incident_ids:
+        log_event("related_incidents_linked", incident_id=incident_id, tenant_id=tenant_id, related_count=len(multi_ticket.related_incident_ids))
+    if multi_ticket.recurrence.pattern_detected:
+        log_event(
+            "recurrence_detected",
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            recurrence_count_7d=multi_ticket.recurrence.recurrence_count_7d,
+            recurrence_count_30d=multi_ticket.recurrence.recurrence_count_30d,
+        )
+    if multi_ticket.cluster_id:
+        log_event("cluster_assigned", incident_id=incident_id, tenant_id=tenant_id, cluster_id=multi_ticket.cluster_id)
+    log_event(
+        "multi_ticket_completed",
+        incident_id=incident_id,
+        tenant_id=tenant_id,
+        is_duplicate=multi_ticket.is_duplicate,
+        related_count=len(multi_ticket.related_incident_ids),
+        recurrence_count_7d=multi_ticket.recurrence.recurrence_count_7d,
+        recurrence_count_30d=multi_ticket.recurrence.recurrence_count_30d,
+        cluster_id=multi_ticket.cluster_id,
+    )
+    triage.is_duplicate = triage.is_duplicate or multi_ticket.is_duplicate
+    triage.duplicate_of_incident_id = triage.duplicate_of_incident_id or multi_ticket.duplicate_of_incident_id
+    triage.dedup_confidence = triage.dedup_confidence or multi_ticket.dedup_confidence
+    triage.related_incident_ids = multi_ticket.related_incident_ids
+    triage.cluster_id = multi_ticket.cluster_id
+    triage.recurrence_count_7d = multi_ticket.recurrence.recurrence_count_7d
+    triage.recurrence_count_30d = multi_ticket.recurrence.recurrence_count_30d
+    triage.scope_assessment = multi_ticket.scope_assessment or triage.scope_assessment
+    triage.multi_ticket_influence_reasoning = multi_ticket.multi_ticket_influence_reasoning
+
     ticket = create_ticket(
         incident_id=incident_id,
         triage=triage,
@@ -269,8 +321,21 @@ async def submit_incident(
         triage=triage,
         ticket=ticket,
         notifications=[team_notification],
+        related_links=[
+            IncidentLinkRecord(
+                source_incident_id=incident_id,
+                target_incident_id=link.target_incident_id,
+                relationship_type=link.relationship_type,
+                similarity_score=link.similarity_score,
+                reasoning=link.reasoning,
+                shared_signals=link.shared_signals,
+            )
+            for link in to_link_records(multi_ticket)
+        ],
     )
     save_incident(db, incident)
+    if incident.related_links:
+        repo.save_incident_links(db, tenant_id=tenant_id, source_incident_id=incident_id, links=incident.related_links)
     return incident
 
 

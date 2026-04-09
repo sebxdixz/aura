@@ -1573,6 +1573,17 @@ def _ticket_description(*, incident_id: str, tenant_id: str, description: str, t
         lines.append(f"Retrieved context paths: {', '.join(triage.retrieved_context_paths[:4])}")
     if triage.used_attachment_signals:
         lines.append(f"Used attachment signals: {', '.join(triage.used_attachment_signals[:6])}")
+    if triage.related_incident_ids:
+        lines.append(f"Related incidents: {', '.join(triage.related_incident_ids[:6])}")
+    if triage.cluster_id:
+        lines.append(f"Cluster: {triage.cluster_id}")
+    if triage.recurrence_count_30d:
+        lines.append(
+            f"Recurrence: {triage.recurrence_count_7d} similar incidents in 7d, "
+            f"{triage.recurrence_count_30d} in 30d."
+        )
+    if triage.multi_ticket_influence_reasoning:
+        lines.append(f"Multi-ticket reasoning: {triage.multi_ticket_influence_reasoning}")
     if triage.attachment_type:
         lines.extend(
             [

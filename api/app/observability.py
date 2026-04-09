@@ -87,4 +87,8 @@ def metrics_snapshot() -> dict[str, object]:
         "avg_triage_duration_ms": avg("triage_duration_ms"),
         "avg_rag_duration_ms": avg("rag_duration_ms"),
         "avg_llm_duration_ms": avg("llm_duration_ms"),
+        "duplicates_detected_total": int(STAGE_COUNTER.get("incident_deduplicated", 0) + STAGE_COUNTER.get("duplicate_detected", 0)),
+        "related_incidents_detected_total": int(STAGE_COUNTER.get("related_incidents_linked", 0)),
+        "incident_clusters_created_total": int(STAGE_COUNTER.get("cluster_assigned", 0)),
+        "recurring_patterns_detected_total": int(STAGE_COUNTER.get("recurrence_detected", 0)),
     }

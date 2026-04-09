@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from .models import (
     AttachmentRecord,
     AuditLogRecord,
+    IncidentLinkRecord,
     IncidentRecord,
     NotificationRecord,
     TenantDashboard,
@@ -57,6 +58,8 @@ def _row_to_tenant(row: Any) -> TenantRecord:
 def _row_to_incident(row: Any) -> IncidentRecord:
     notifications_raw: list[dict] = row.notifications or []
     notifications = [NotificationRecord(**n) for n in notifications_raw]
+    related_links_raw: list[dict] = getattr(row, "related_links", None) or []
+    related_links = [IncidentLinkRecord(**link) for link in related_links_raw]
     attachment = None
     if getattr(row, "attachment_filename", None):
         attachment = AttachmentRecord(
@@ -85,6 +88,7 @@ def _row_to_incident(row: Any) -> IncidentRecord:
         triage=row.triage,
         ticket=row.ticket,
         notifications=notifications,
+        related_links=related_links,
     )
 
 
@@ -138,6 +142,8 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
                  attachment_type, attachment_filename, attachment_mime_type,
                  attachment_size_bytes, attachment_storage_path, attachment_text_extracted,
                  attachment_summary, evidence_from_attachment, attachment_signals, attachment_used,
+                 duplicate_of_incident_id, cluster_id, recurrence_count_7d, recurrence_count_30d,
+                 related_links, scope_assessment, multi_ticket_influence_reasoning,
                  triage, ticket, notifications)
             VALUES
                 (:iid, :tid, :email, :desc,
@@ -153,6 +159,13 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
                  cast(:evidence_from_attachment as jsonb),
                  cast(:attachment_signals as jsonb),
                  :attachment_used,
+                 :duplicate_of_incident_id,
+                 :cluster_id,
+                 :recurrence_count_7d,
+                 :recurrence_count_30d,
+                 cast(:related_links as jsonb),
+                 :scope_assessment,
+                 :multi_ticket_influence_reasoning,
                  cast(:triage as jsonb),
                  cast(:ticket as jsonb),
                  cast(:notifs as jsonb))
@@ -176,6 +189,13 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
             "evidence_from_attachment": json.dumps(record.attachment.evidence_from_attachment if record.attachment else []),
             "attachment_signals": json.dumps(record.attachment.attachment_signals if record.attachment else {}),
             "attachment_used": record.attachment.attachment_used if record.attachment else False,
+            "duplicate_of_incident_id": record.triage.duplicate_of_incident_id,
+            "cluster_id": record.triage.cluster_id,
+            "recurrence_count_7d": record.triage.recurrence_count_7d,
+            "recurrence_count_30d": record.triage.recurrence_count_30d,
+            "related_links": json.dumps([link.model_dump() for link in record.related_links]),
+            "scope_assessment": record.triage.scope_assessment,
+            "multi_ticket_influence_reasoning": record.triage.multi_ticket_influence_reasoning,
             "triage": json.dumps(record.triage.model_dump()),
             "ticket": json.dumps(record.ticket.model_dump()),
             "notifs": json.dumps([n.model_dump() for n in record.notifications]),
@@ -227,6 +247,79 @@ def find_open_duplicate_incident(db: Session, tenant_id: str, description: str) 
         {"tid": tenant_id, "desc_norm": normalized},
     ).fetchone()
     return _row_to_incident(row) if row else None
+
+
+def find_recent_incidents_for_similarity(
+    db: Session,
+    tenant_id: str,
+    current_incident_id: str,
+    hours_back: int = 72,
+) -> list[IncidentRecord]:
+    rows = db.execute(
+        text(
+            """
+            SELECT *
+            FROM incidents
+            WHERE tenant_id = :tid
+              AND incident_id <> :iid
+              AND created_at >= NOW() - (:hours || ' hours')::interval
+            ORDER BY created_at DESC
+            """
+        ),
+        {"tid": tenant_id, "iid": current_incident_id, "hours": max(hours_back, 1)},
+    ).fetchall()
+    return [_row_to_incident(r) for r in rows]
+
+
+def find_historical_incidents_for_recurrence(
+    db: Session,
+    tenant_id: str,
+    current_incident_id: str,
+    days_back: int = 30,
+) -> list[IncidentRecord]:
+    rows = db.execute(
+        text(
+            """
+            SELECT *
+            FROM incidents
+            WHERE tenant_id = :tid
+              AND incident_id <> :iid
+              AND created_at >= NOW() - (:days || ' days')::interval
+            ORDER BY created_at DESC
+            """
+        ),
+        {"tid": tenant_id, "iid": current_incident_id, "days": max(days_back, 1)},
+    ).fetchall()
+    return [_row_to_incident(r) for r in rows]
+
+
+def save_incident_links(
+    db: Session,
+    tenant_id: str,
+    source_incident_id: str,
+    links: list[IncidentLinkRecord],
+) -> None:
+    for link in links:
+        db.execute(
+            text(
+                """
+                INSERT INTO incident_links
+                    (tenant_id, source_incident_id, target_incident_id, relationship_type, similarity_score, reasoning, shared_signals)
+                VALUES
+                    (:tid, :source_iid, :target_iid, :relationship_type, :similarity_score, :reasoning, cast(:shared_signals as jsonb))
+                """
+            ),
+            {
+                "tid": tenant_id,
+                "source_iid": source_incident_id,
+                "target_iid": link.target_incident_id,
+                "relationship_type": link.relationship_type,
+                "similarity_score": link.similarity_score,
+                "reasoning": link.reasoning,
+                "shared_signals": json.dumps(link.shared_signals),
+            },
+        )
+    db.commit()
 
 
 def resolve_incident(

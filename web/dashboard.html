@@ -121,13 +121,14 @@
               <th>Commander Summary</th>
               <th>Evidence</th>
               <th>Score Breakdown</th>
+              <th>Related / Cluster</th>
               <th>Created</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="incidentsBody">
-            <tr><td colspan="10" class="empty">No incidents loaded yet.</td></tr>
+            <tr><td colspan="11" class="empty">No incidents loaded yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -224,6 +225,14 @@
                 <div class="label">Recommended Investigation</div>
                 <div class="value">${esc(triage.proposed_fix || "-")}</div>
               </div>
+              <div class="card">
+                <div class="label">Multi-Ticket Intelligence</div>
+                <div class="value">${esc(triage.multi_ticket_influence_reasoning || "No strong multi-ticket pattern detected yet.")}</div>
+              </div>
+              <div class="card">
+                <div class="label">Recurrence</div>
+                <div class="value">${esc(`7d=${triage.recurrence_count_7d || 0} | 30d=${triage.recurrence_count_30d || 0} | cluster=${triage.cluster_id || "none"}`)}</div>
+              </div>
             </div>
           </div>
           <div>
@@ -244,6 +253,10 @@
               <div class="label">Evidence Used</div>
               <div class="list">${renderList([...(triage.description_signals || []), ...(triage.used_attachment_signals || [])].slice(0, 8))}</div>
             </div>
+            <div class="card" style="margin-top:12px;">
+              <div class="label">Related Incidents</div>
+              <div class="list">${renderList(triage.related_incident_ids || [])}</div>
+            </div>
           </div>
         </div>
       `;
@@ -252,7 +265,7 @@
     function renderIncidents(items) {
       incidentsCount.textContent = `${items.length} records`;
       if (!items.length) {
-        incidentsBody.innerHTML = '<tr><td colspan="10" class="empty">No incidents for this tenant.</td></tr>';
+        incidentsBody.innerHTML = '<tr><td colspan="11" class="empty">No incidents for this tenant.</td></tr>';
         return;
       }
 
@@ -278,6 +291,11 @@
           `attach +${triage.attachment_score || 0}`,
           `critical +${triage.criticality_score || 0}`,
         ].join(" | ");
+        const relatedBits = [
+          triage.related_incident_ids?.length ? `related=${triage.related_incident_ids.length}` : "",
+          triage.cluster_id ? `cluster=${triage.cluster_id}` : "",
+          triage.recurrence_count_30d ? `30d=${triage.recurrence_count_30d}` : ""
+        ].filter(Boolean).join(" | ");
 
         return `
           <tr>
@@ -288,6 +306,7 @@
             <td>${esc(triage.technical_summary || item.description || "-")}</td>
             <td>${esc(evidenceBits || "-")}</td>
             <td>${esc(scoreBits)}</td>
+            <td>${esc(relatedBits || "-")}</td>
             <td class="mono">${created}</td>
             <td><span class="pill" id="status-${id}">${status}</span></td>
             <td>${action}</td>

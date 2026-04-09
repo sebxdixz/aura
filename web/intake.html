@@ -233,6 +233,10 @@
             <div class="res-val" id="resRagEvidence"></div>
           </div>
           <div class="res-card">
+            <div class="res-label">Incident Pattern</div>
+            <div class="res-val" id="resPattern"></div>
+          </div>
+          <div class="res-card">
             <div class="res-label">Attachment Evidence</div>
             <div class="res-val" id="resAttachment"></div>
           </div>
@@ -384,6 +388,13 @@
       document.getElementById("resRagEvidence").textContent = (tr.rag_evidence && tr.rag_evidence.length)
         ? tr.rag_evidence.join(" | ")
         : ((tr.retrieved_context_paths && tr.retrieved_context_paths.length) ? tr.retrieved_context_paths.join(" | ") : "No strong repository context was retrieved.");
+      document.getElementById("resPattern").textContent = [
+        tr.related_incident_ids && tr.related_incident_ids.length ? `related=${tr.related_incident_ids.join(", ")}` : "",
+        tr.cluster_id ? `cluster=${tr.cluster_id}` : "",
+        tr.recurrence_count_7d !== undefined ? `seen_7d=${tr.recurrence_count_7d}` : "",
+        tr.recurrence_count_30d !== undefined ? `seen_30d=${tr.recurrence_count_30d}` : "",
+        tr.multi_ticket_influence_reasoning || ""
+      ].filter(Boolean).join(" | ");
       document.getElementById("resAttachment").textContent = tr.attachment_summary || attachment.attachment_summary || "No attachment evidence.";
       document.getElementById("resInfluence").textContent = tr.attachment_influence_reasoning || "Attachment did not materially change the triage.";
       document.getElementById("resCode").textContent = tr.proposed_cli_command || "echo 'No CLI action needed.'";
@@ -409,6 +420,9 @@
       }
       if (tr.description_signals && tr.description_signals.length) {
         integrations += `description_signals=${tr.description_signals.slice(0, 5).join(", ")}\n`;
+      }
+      if (tr.related_incident_ids && tr.related_incident_ids.length) {
+        integrations += `related_incidents=${tr.related_incident_ids.slice(0, 5).join(", ")}\n`;
       }
       integrations += `triage_mode=${tr.triage_mode || "default"}\n`;
       integrations += `llm_mode=${tr.llm_mode || "default"}`;

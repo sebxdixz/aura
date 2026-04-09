@@ -36,6 +36,7 @@ describeWeb("AURA web separation", () => {
     await expect(page.locator("#resScoreBreakdown")).toContainText("Technical description", { timeout: WEB_SUBMIT_TIMEOUT_MS });
     await expect(page.locator("#resRouting")).toContainText("team=", { timeout: WEB_SUBMIT_TIMEOUT_MS });
     await expect(page.locator("#resRagEvidence")).not.toContainText("No strong repository context was retrieved.", { timeout: WEB_SUBMIT_TIMEOUT_MS });
+    await expect(page.locator("#resPattern")).toContainText("seen_30d=", { timeout: WEB_SUBMIT_TIMEOUT_MS });
     await expect(page.locator("#resAttachment")).toContainText("checkout", { timeout: WEB_SUBMIT_TIMEOUT_MS });
     await expect(page.locator("#resInfluence")).toContainText("Attachment evidence", { timeout: WEB_SUBMIT_TIMEOUT_MS });
 
@@ -49,6 +50,7 @@ describeWeb("AURA web separation", () => {
     await expect(dashboard.locator("#commandView")).toContainText("Triage Score:", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
     await expect(dashboard.locator("#commandView")).toContainText("Matched Context", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
     await expect(dashboard.locator("#commandView")).toContainText("Score Breakdown", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
+    await expect(dashboard.locator("#commandView")).toContainText("Multi-Ticket Intelligence", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
     await expect(dashboard.locator("tbody")).toContainText("checkout", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
     await expect(dashboard.locator("tbody")).toContainText("desc +", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
 
