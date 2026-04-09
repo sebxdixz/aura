@@ -136,7 +136,7 @@ services:
   web:
     build:
       context: ./web
-      dockerfile: Dockerfile.report
+      dockerfile: Dockerfile.unified
     container_name: aura-web
     ports:
       - "${WEB_PORT:-3000}:80"
@@ -153,11 +153,11 @@ services:
     depends_on:
       - api
 
-  web_unified:
+  web_report:
     build:
       context: ./web
-      dockerfile: Dockerfile.unified
-    container_name: aura-web-unified
+      dockerfile: Dockerfile.report
+    container_name: aura-web-report
     ports:
       - "${UNIFIED_WEB_PORT:-3002}:80"
     depends_on:

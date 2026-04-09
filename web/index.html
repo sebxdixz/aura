@@ -1602,14 +1602,25 @@
         th_cost:           'Cost USD',
         th_created:        'Created',
         /* result labels */
-        rl_summary:        'Technical Summary',
+        rl_summary:        'Commander Summary',
         rl_ticket:         'Ticket',
-        rl_rca:            'Root Cause Analysis',
-        rl_fix:            'Auto-Fix Proposal',
-        rl_cli:            'Suggested CLI Command',
+        rl_rca:            'Root Cause',
+        rl_fix:            'Recommended Investigation',
+        rl_cli:            'Suggested Command',
         rl_runbook:        'Runbook Steps',
         rl_resolution:     'Resolution Notes',
         rl_notifs:         'Notifications',
+        rl_routing:        'Routing Decision',
+        rl_assessment:     'Assessment Signals',
+        rl_score:          'Score Breakdown',
+        rl_rag:            'RAG Evidence',
+        rl_pattern:        'Incident Pattern',
+        rl_duplicate:      'Possible Duplicate',
+        rl_scope:          'Scope Assessment',
+        rl_links:          'Incident Links',
+        rl_attachment:     'Attachment Evidence',
+        rl_influence:      'Attachment Influence',
+        rl_handoff:        'Operational Handoff',
         btn_resolve:       'Mark Resolved',
         btn_view_all:      'View All →',
         via_provider:      'via',
@@ -1709,14 +1720,25 @@
         th_tokens:         'Tokens',
         th_cost:           'Costo USD',
         th_created:        'Creado',
-        rl_summary:        'Resumen Técnico',
+        rl_summary:        'Resumen Commander',
         rl_ticket:         'Ticket',
-        rl_rca:            'Análisis de Causa Raíz',
-        rl_fix:            'Propuesta de Auto-Fix',
-        rl_cli:            'Comando CLI Sugerido',
+        rl_rca:            'Causa Raíz',
+        rl_fix:            'Investigación Recomendada',
+        rl_cli:            'Comando Sugerido',
         rl_runbook:        'Pasos del Runbook',
         rl_resolution:     'Notas de Resolucion',
         rl_notifs:         'Notificaciones',
+        rl_routing:        'Decisión de Routing',
+        rl_assessment:     'Señales de Evaluación',
+        rl_score:          'Desglose de Score',
+        rl_rag:            'Evidencia RAG',
+        rl_pattern:        'Patrón del Incidente',
+        rl_duplicate:      'Posible Duplicado',
+        rl_scope:          'Evaluación de Alcance',
+        rl_links:          'Links del Incidente',
+        rl_attachment:     'Evidencia del Adjunto',
+        rl_influence:      'Influencia del Adjunto',
+        rl_handoff:        'Handoff Operacional',
         btn_resolve:       'Marcar Resuelto',
         btn_view_all:      'Ver Todos →',
         via_provider:      'vía',
@@ -1784,9 +1806,7 @@
     /* ═══════════════════════════════════════════════════════════
        App state & constants
     ═══════════════════════════════════════════════════════════ */
-    const API = window.location.hostname === 'localhost'
-      ? 'http://localhost:8000'
-      : `${location.protocol}//${location.hostname}:8000`;
+    const API = '';
 
     let currentTenant = null;
     let lastIncidentId = null;
@@ -2019,7 +2039,16 @@
         document.getElementById('tenantChip').classList.add('has-tenant');
         document.getElementById('tenantChipLabel').textContent = tid.toUpperCase();
         updateIntakeUrl(tid);
-        renderTriage(data);
+        if (["submitted", "processing"].includes(String(data.processing_state || ""))) {
+          renderTriageQueued(data);
+          const completed = await pollIncident(data.incident_id);
+          if (String(completed.processing_state || "") === "failed") {
+            return;
+          }
+          renderTriage(completed);
+        } else {
+          renderTriage(data);
+        }
         toast(`${data.incident_id.toUpperCase()}`, 'ok');
 
       } catch (err) {
@@ -2034,7 +2063,7 @@
     function renderTriage(d) {
       const sev    = d.triage?.severity || 'low';
       const svc    = d.triage?.affected_service || '—';
-      const sum    = d.triage?.technical_summary || '—';
+      const sum    = d.triage?.triage_summary || d.triage?.technical_summary || '—';
       const rca    = d.triage?.root_cause_analysis || '—';
       const fix    = d.triage?.proposed_fix || '—';
       const cli    = d.triage?.proposed_cli_command || '—';
@@ -2049,6 +2078,50 @@
       const tokLbl  = formatTokensValue(usage.tokens);
       const usdLbl  = formatUsdValue(usage.costUsd);
       const resolutionNotes = String(d.resolution_notes || '').trim();
+      const tr = d.triage || {};
+      const attachment = d.attachment || d.file_meta || {};
+      const routing = [
+        tr.target_team ? `team=${tr.target_team}` : '',
+        tr.affected_service ? `service=${tr.affected_service}` : '',
+        tr.incident_type ? `type=${tr.incident_type}` : '',
+        tr.routing_confidence !== undefined ? `routing_confidence=${tr.routing_confidence}` : '',
+      ].filter(Boolean).join(' | ') || '—';
+      const assessment = [
+        tr.affected_surface ? `surface=${tr.affected_surface}` : '',
+        tr.observed_error ? `error=${tr.observed_error}` : '',
+        tr.scope_assessment || (tr.user_scope ? `scope=${tr.user_scope}` : ''),
+        tr.confidence !== undefined ? `confidence=${tr.confidence}` : '',
+        tr.severity_confidence !== undefined ? `severity_confidence=${tr.severity_confidence}` : '',
+        tr.root_cause_confidence !== undefined ? `rca_confidence=${tr.root_cause_confidence}` : '',
+      ].filter(Boolean).join(' | ') || '—';
+      const scoreBreakdown = [
+        tr.description_score !== undefined ? `Technical description: +${tr.description_score}` : '',
+        tr.attachment_score !== undefined ? `Attachment evidence: +${tr.attachment_score}` : '',
+        tr.criticality_score !== undefined ? `Critical flow impact: +${tr.criticality_score}` : '',
+        Number(tr.recurrence_count_30d || 0) > 0 ? `Recurring pattern: seen ${tr.recurrence_count_30d} times in 30d` : '',
+        tr.severity_score !== undefined ? `Final score: ${tr.severity_score}/100` : '',
+      ].filter(Boolean).join(' | ') || 'No detailed scoring available.';
+      const ragEvidence = (tr.rag_evidence && tr.rag_evidence.length)
+        ? tr.rag_evidence.join(' | ')
+        : ((tr.retrieved_context_paths && tr.retrieved_context_paths.length)
+          ? tr.retrieved_context_paths.join(' | ')
+          : 'No strong repository context was retrieved.');
+      const incidentPattern = [
+        tr.related_incident_ids && tr.related_incident_ids.length ? `related=${tr.related_incident_ids.join(', ')}` : '',
+        tr.cluster_id ? `cluster=${tr.cluster_id}` : '',
+        tr.recurrence_count_7d !== undefined ? `seen_7d=${tr.recurrence_count_7d}` : '',
+        tr.recurrence_count_30d !== undefined ? `seen_30d=${tr.recurrence_count_30d}` : '',
+        tr.multi_ticket_influence_reasoning || '',
+      ].filter(Boolean).join(' | ') || 'No broader incident pattern detected.';
+      const duplicate = tr.is_duplicate
+        ? `duplicate_of=${tr.duplicate_of_incident_id || 'existing_open_incident'} | confidence=${tr.dedup_confidence ?? 0}`
+        : 'No active duplicate match detected.';
+      const scope = tr.scope_assessment || tr.user_scope || 'single_report';
+      const links = d.related_links && d.related_links.length
+        ? d.related_links.map((link) => `${link.relationship_type}:${link.target_incident_id} (${link.similarity_score})`).join(' | ')
+        : 'No persisted incident links yet.';
+      const attachmentEvidence = tr.attachment_summary || attachment.attachment_summary || 'No attachment evidence.';
+      const attachmentInfluence = tr.attachment_influence_reasoning || 'Attachment did not materially change the triage.';
 
       const runItems = runs.map((r, i) => `<li data-n="${i+1}">${escHtml(r)}</li>`).join('');
 
@@ -2090,6 +2163,56 @@
               </div>
             </div>
             <div class="result-row">
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_routing')}</div>
+                <div class="result-cell-val">${escHtml(routing)}</div>
+              </div>
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_assessment')}</div>
+                <div class="result-cell-val">${escHtml(assessment)}</div>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_score')}</div>
+                <div class="result-cell-val">${escHtml(scoreBreakdown)}</div>
+              </div>
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_rag')}</div>
+                <div class="result-cell-val">${escHtml(ragEvidence)}</div>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_pattern')}</div>
+                <div class="result-cell-val">${escHtml(incidentPattern)}</div>
+              </div>
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_duplicate')}</div>
+                <div class="result-cell-val">${escHtml(duplicate)}</div>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_scope')}</div>
+                <div class="result-cell-val">${escHtml(scope)}</div>
+              </div>
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_links')}</div>
+                <div class="result-cell-val">${escHtml(links)}</div>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_attachment')}</div>
+                <div class="result-cell-val">${escHtml(attachmentEvidence)}</div>
+              </div>
+              <div class="result-cell">
+                <div class="result-cell-label">${t('rl_influence')}</div>
+                <div class="result-cell-val">${escHtml(attachmentInfluence)}</div>
+              </div>
+            </div>
+            <div class="result-row">
               <div class="result-cell full">
                 <div class="result-cell-label">${t('rl_cli')}</div>
                 <div class="result-code">${escHtml(cli)}</div>
@@ -2109,6 +2232,12 @@
                 <div class="result-cell-val">${escHtml(resolutionNotes)}</div>
               </div>
             </div>` : ''}
+            <div class="result-row">
+              <div class="result-cell full">
+                <div class="result-cell-label">${t('rl_handoff')}</div>
+                <div class="result-code">${escHtml(buildOperationalHandoff(d))}</div>
+              </div>
+            </div>
             ${notifs.length ? `<div class="result-notifs">${notifRows}</div>` : ''}
             <div class="result-meta-bar">
               <span>${ts}</span>
@@ -2124,6 +2253,86 @@
             <button class="btn btn-ghost btn-sm" onclick="navigate('incidents')">${t('btn_view_all')}</button>
           </div>
         </div>`;
+    }
+
+    function renderTriageQueued(d) {
+      document.getElementById('triageWrap').innerHTML = `
+        <div class="section-block">
+          <div class="section-header">
+            <span class="section-label">${t('triage_output')}</span>
+            <span class="section-meta">${String(d.processing_state || 'submitted').toUpperCase()}</span>
+          </div>
+          <div class="empty">
+            <div class="empty-code">0x02 · WORKER PROCESSING</div>
+            <div class="empty-msg">Incident ${escHtml(d.incident_id)} queued. Waiting for async triage, ticketing, and multi-ticket analysis…</div>
+          </div>
+        </div>`;
+    }
+
+    async function pollIncident(incidentId) {
+      const started = Date.now();
+      while (Date.now() - started < 90000) {
+        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Unable to refresh incident status.');
+        const processingState = String(data.processing_state || '');
+        if (processingState === 'failed') {
+          renderTriageFailure(data);
+          return data;
+        }
+        if (!['submitted', 'processing'].includes(processingState)) {
+          return data;
+        }
+        renderTriageQueued(data);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+      throw new Error('Worker processing timed out while waiting for incident completion.');
+    }
+
+    function renderTriageFailure(d) {
+      const failedDetail = (d.notifications || []).find((item) => item.status === 'failed');
+      const failureText = failedDetail ? failedDetail.detail : 'Worker processing failed before the commander brief could be completed.';
+      document.getElementById('triageWrap').innerHTML = `
+        <div class="section-block">
+          <div class="section-header">
+            <span class="section-label">${t('triage_output')}</span>
+            <span class="section-meta">FAILED</span>
+          </div>
+          <div class="empty">
+            <div class="empty-code">0xFF · PIPELINE FAILED</div>
+            <div class="empty-msg">${escHtml(failureText)}</div>
+          </div>
+        </div>`;
+    }
+
+    function buildOperationalHandoff(d) {
+      const tr = d.triage || {};
+      const attachment = d.attachment || d.file_meta || {};
+      let handoff = '';
+      if (d.ticket && d.ticket.ticket_id) {
+        handoff += `ticket=${d.ticket.ticket_id} provider=${d.ticket.provider}\n`;
+      }
+      if (d.notifications && d.notifications[0]) {
+        handoff += `notify=${d.notifications[0].detail}\n`;
+      }
+      if (attachment.attachment_filename || attachment.filename) {
+        handoff += `attachment=${attachment.attachment_filename || attachment.filename} used=${String(tr.attachment_used)}\n`;
+      }
+      if (tr.used_attachment_signals && tr.used_attachment_signals.length) {
+        handoff += `attachment_signals=${tr.used_attachment_signals.slice(0, 5).join(', ')}\n`;
+      }
+      if (tr.description_signals && tr.description_signals.length) {
+        handoff += `description_signals=${tr.description_signals.slice(0, 5).join(', ')}\n`;
+      }
+      if (tr.related_incident_ids && tr.related_incident_ids.length) {
+        handoff += `related_incidents=${tr.related_incident_ids.slice(0, 5).join(', ')}\n`;
+      }
+      if (tr.severity_reasoning) {
+        handoff += `why_this_score=${tr.severity_reasoning}\n`;
+      }
+      handoff += `triage_mode=${tr.triage_mode || 'default'}\n`;
+      handoff += `llm_mode=${tr.llm_mode || 'default'}`;
+      return handoff;
     }
 
     function renderTriageErr(msg) {

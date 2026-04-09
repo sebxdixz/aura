@@ -272,9 +272,7 @@
   <div class="toast-wrap" id="toasts"></div>
 
   <script>
-    const API = window.location.hostname === "localhost"
-      ? "http://localhost:8000"
-      : `${location.protocol}//${location.hostname}:8000`;
+    const API = "";
 
     const pathMatch = window.location.pathname.match(/^\/intake\/([A-Za-z0-9._-]+)\/?$/);
     const tenantId = (pathMatch && pathMatch[1]) || new URLSearchParams(window.location.search).get("tenant_id") || "hackathon-demo";

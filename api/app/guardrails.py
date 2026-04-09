@@ -52,6 +52,30 @@ def validate_file(content_type: str | None, size_bytes: int | None) -> None:
         raise ValueError(f"file too large (max {MAX_FILE_BYTES} bytes)")
 
 
+def sanitize_filename(filename: str | None) -> str:
+    raw = (filename or "attachment").strip()
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", raw)
+    cleaned = cleaned.strip("._")
+    return cleaned or "attachment"
+
+
+def validate_attachment(
+    *,
+    filename: str | None,
+    content_type: str | None,
+    size_bytes: int | None,
+    content_bytes: bytes | None = None,
+) -> str:
+    validate_file(content_type, size_bytes)
+    safe_name = sanitize_filename(filename)
+    if content_bytes:
+        lowered = content_bytes[:4096].decode("utf-8", errors="ignore").lower()
+        for pattern in BLOCKED_PATTERNS:
+            if re.search(pattern, lowered, flags=re.IGNORECASE):
+                raise ValueError("possible prompt injection pattern detected in attachment")
+    return safe_name
+
+
 def validate_tool_name(tool_name: str) -> None:
     if tool_name not in ALLOWED_TOOL_NAMES:
         raise ValueError(f"tool '{tool_name}' is not allowed")
