@@ -13,7 +13,7 @@ function uniqueTenant(prefix = "pw-web") {
 }
 
 describeWeb("AURA web separation", () => {
-  test("public report portal works on /intake and dashboard is handled separately", async ({ page, context }) => {
+  test("public report portal shows attachment evidence end-to-end", async ({ page, context }) => {
     const tenant = uniqueTenant("tenant-ui");
     const reporter = `${tenant}@demo.com`;
 
@@ -24,10 +24,17 @@ describeWeb("AURA web separation", () => {
     await page.fill("#reporter_email", reporter);
     await page.selectOption("#issue_type", "checkout");
     await page.fill("#description", "Checkout returns 500 when coupon is applied.");
+    await page.locator("#attachment").setInputFiles({
+      name: "incident.log",
+      mimeType: "text/plain",
+      buffer: Buffer.from("2026-04-08T17:21:00Z ERROR checkout-service HTTP 500 payment failed", "utf-8"),
+    });
+
     await page.click("#submitBtn");
 
     await expect(page.locator("#outStatus")).toContainText("COMPLETED", { timeout: WEB_SUBMIT_TIMEOUT_MS });
-    await expect(page.locator("#resIntegrations")).toContainText("LLM Engine", { timeout: WEB_SUBMIT_TIMEOUT_MS });
+    await expect(page.locator("#resAttachment")).toContainText("checkout", { timeout: WEB_SUBMIT_TIMEOUT_MS });
+    await expect(page.locator("#resInfluence")).toContainText("Attachment evidence", { timeout: WEB_SUBMIT_TIMEOUT_MS });
 
     const dashboard = await context.newPage();
     await dashboard.goto(`${DASHBOARD_BASE_URL}/?tenant_id=${encodeURIComponent(tenant)}`);
@@ -36,13 +43,12 @@ describeWeb("AURA web separation", () => {
     await expect(dashboard.locator("#statusMsg")).toContainText(`workspace loaded: ${tenant}`, {
       timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS,
     });
-    const total = Number(await dashboard.locator("#stat_total").innerText());
-    expect(total).toBeGreaterThanOrEqual(1);
+    await expect(dashboard.locator("tbody")).toContainText("incident.log", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
+    await expect(dashboard.locator("tbody")).toContainText("checkout", { timeout: WEB_DASHBOARD_LOAD_TIMEOUT_MS });
 
     const resolveBtn = dashboard.locator("button[data-incident-id]").first();
     await expect(resolveBtn).toBeVisible();
     const incidentId = await resolveBtn.getAttribute("data-incident-id");
-    expect(incidentId).toBeTruthy();
     await resolveBtn.click();
     await expect(dashboard.locator(`#status-${incidentId}`)).toContainText("RESOLVED", { timeout: WEB_RESOLVE_TIMEOUT_MS });
   });

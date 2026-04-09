@@ -16,13 +16,39 @@ class FileMeta(BaseModel):
     size_bytes: int
 
 
+class AttachmentRecord(BaseModel):
+    attachment_type: str
+    attachment_filename: str
+    attachment_mime_type: str
+    attachment_size_bytes: int
+    attachment_storage_path: str
+    attachment_text_extracted: str = ""
+    attachment_summary: str = ""
+    evidence_from_attachment: list[str] = Field(default_factory=list)
+    attachment_signals: dict = Field(default_factory=dict)
+    attachment_used: bool = False
+    extraction_method: str = "none"
+
+
 class TriageOutput(BaseModel):
     severity: Literal["low", "medium", "high", "critical"]
     affected_service: str
     technical_summary: str
+    triage_summary: str = ""
+    retrieved_context_paths: list[str] = Field(default_factory=list)
+    used_attachment_signals: list[str] = Field(default_factory=list)
     relevant_files: list[str] = Field(default_factory=list)
     severity_score: int = 0
+    impact_score: int = 0
+    scope_score: int = 0
+    reporter_score: int = 0
+    error_code_score: int = 0
+    component_score: int = 0
     severity_rationale: str = ""
+    severity_reasoning: str = ""
+    routing_reasoning: str = ""
+    workaround_present: bool = False
+    security_risk: bool = False
     runbook_suggestions: list[str] = Field(default_factory=list)
     is_duplicate: bool = False
     duplicate_of_incident_id: str | None = None
@@ -31,6 +57,17 @@ class TriageOutput(BaseModel):
     proposed_fix: str
     proposed_cli_command: str
     llm_mode: str
+    attachment_used: bool = False
+    attachment_type: str | None = None
+    attachment_text_extracted: str = ""
+    evidence_from_attachment: list[str] = Field(default_factory=list)
+    attachment_summary: str = ""
+    attachment_influence_reasoning: str = ""
+    confidence: float = 0.0
+    context_adherence_score: float = 0.0
+    llm_used: bool = False
+    fallback_used: bool = False
+    retrieval_empty: bool = False
 
 
 class TicketRecord(BaseModel):
@@ -38,6 +75,8 @@ class TicketRecord(BaseModel):
     provider: str
     url: str
     status: Literal["created", "failed"] = "created"
+    title: str = ""
+    description: str = ""
 
 
 class NotificationRecord(BaseModel):
@@ -56,6 +95,7 @@ class IncidentRecord(BaseModel):
     created_at: str = Field(default_factory=utc_now_iso)
     resolved_at: str | None = None
     file_meta: FileMeta | None = None
+    attachment: AttachmentRecord | None = None
     triage: TriageOutput
     ticket: TicketRecord
     notifications: list[NotificationRecord] = Field(default_factory=list)

@@ -1,5 +1,5 @@
 """
-repository.py – Data-access layer for AURA.
+repository.py - Data-access layer for AURA.
 
 All SQL uses SQLAlchemy Core text() so it works with SQLAlchemy 2.x.
 Every public function receives a Session and applies tenant_id
@@ -15,18 +15,15 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .models import (
+    AttachmentRecord,
     AuditLogRecord,
     IncidentRecord,
     NotificationRecord,
-    TenantInsightsSummary,
     TenantDashboard,
+    TenantInsightsSummary,
     TenantRecord,
 )
 
-
-# ──────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -58,13 +55,22 @@ def _row_to_tenant(row: Any) -> TenantRecord:
 
 
 def _row_to_incident(row: Any) -> IncidentRecord:
-    """Reconstruct a full IncidentRecord from a DB row.
-
-    psycopg2 deserialises JSONB columns into Python dicts automatically,
-    so we can pass them directly to Pydantic for coercion.
-    """
     notifications_raw: list[dict] = row.notifications or []
     notifications = [NotificationRecord(**n) for n in notifications_raw]
+    attachment = None
+    if getattr(row, "attachment_filename", None):
+        attachment = AttachmentRecord(
+            attachment_type=row.attachment_type or "unknown",
+            attachment_filename=row.attachment_filename,
+            attachment_mime_type=row.attachment_mime_type or "",
+            attachment_size_bytes=row.attachment_size_bytes or 0,
+            attachment_storage_path=row.attachment_storage_path or "",
+            attachment_text_extracted=row.attachment_text_extracted or "",
+            attachment_summary=row.attachment_summary or "",
+            evidence_from_attachment=row.evidence_from_attachment or [],
+            attachment_signals=row.attachment_signals or {},
+            attachment_used=bool(row.attachment_used),
+        )
 
     return IncidentRecord(
         incident_id=row.incident_id,
@@ -74,9 +80,10 @@ def _row_to_incident(row: Any) -> IncidentRecord:
         status=row.status,
         created_at=_iso(row.created_at),
         resolved_at=_iso_or_none(row.resolved_at),
-        file_meta=row.file_meta,       # dict | None  → Pydantic coerces to FileMeta
-        triage=row.triage,             # dict         → Pydantic coerces to TriageOutput
-        ticket=row.ticket,             # dict         → Pydantic coerces to TicketRecord
+        file_meta=row.file_meta,
+        attachment=attachment,
+        triage=row.triage,
+        ticket=row.ticket,
         notifications=notifications,
     )
 
@@ -93,10 +100,6 @@ def _row_to_audit(row: Any) -> AuditLogRecord:
     )
 
 
-# ──────────────────────────────────────────────────────────────
-# Tenant repository
-# ──────────────────────────────────────────────────────────────
-
 def get_tenant(db: Session, tenant_id: str) -> TenantRecord | None:
     row = db.execute(
         text(
@@ -109,7 +112,6 @@ def get_tenant(db: Session, tenant_id: str) -> TenantRecord | None:
 
 
 def upsert_tenant(db: Session, tenant_id: str, name: str) -> TenantRecord:
-    """Insert or return existing tenant (idempotent / upsert)."""
     existing = get_tenant(db, tenant_id)
     if existing:
         return existing
@@ -126,37 +128,57 @@ def upsert_tenant(db: Session, tenant_id: str, name: str) -> TenantRecord:
     return TenantRecord(tenant_id=tenant_id, name=name, intake_url=intake_url)
 
 
-# ──────────────────────────────────────────────────────────────
-# Incident repository
-# ──────────────────────────────────────────────────────────────
-
 def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
     db.execute(
         text(
             """
             INSERT INTO incidents
                 (incident_id, tenant_id, reporter_email, description,
-                 status, file_meta, triage, ticket, notifications)
+                 status, file_meta,
+                 attachment_type, attachment_filename, attachment_mime_type,
+                 attachment_size_bytes, attachment_storage_path, attachment_text_extracted,
+                 attachment_summary, evidence_from_attachment, attachment_signals, attachment_used,
+                 triage, ticket, notifications)
             VALUES
                 (:iid, :tid, :email, :desc,
                  :status,
                  cast(:file_meta as jsonb),
-                 cast(:triage   as jsonb),
-                 cast(:ticket   as jsonb),
-                 cast(:notifs   as jsonb))
+                 :attachment_type,
+                 :attachment_filename,
+                 :attachment_mime_type,
+                 :attachment_size_bytes,
+                 :attachment_storage_path,
+                 :attachment_text_extracted,
+                 :attachment_summary,
+                 cast(:evidence_from_attachment as jsonb),
+                 cast(:attachment_signals as jsonb),
+                 :attachment_used,
+                 cast(:triage as jsonb),
+                 cast(:ticket as jsonb),
+                 cast(:notifs as jsonb))
             ON CONFLICT (incident_id) DO NOTHING
             """
         ),
         {
-            "iid":       record.incident_id,
-            "tid":       record.tenant_id,
-            "email":     str(record.reporter_email),
-            "desc":      record.description,
-            "status":    record.status,
+            "iid": record.incident_id,
+            "tid": record.tenant_id,
+            "email": str(record.reporter_email),
+            "desc": record.description,
+            "status": record.status,
             "file_meta": json.dumps(record.file_meta.model_dump() if record.file_meta else None),
-            "triage":    json.dumps(record.triage.model_dump()),
-            "ticket":    json.dumps(record.ticket.model_dump()),
-            "notifs":    json.dumps([n.model_dump() for n in record.notifications]),
+            "attachment_type": record.attachment.attachment_type if record.attachment else None,
+            "attachment_filename": record.attachment.attachment_filename if record.attachment else None,
+            "attachment_mime_type": record.attachment.attachment_mime_type if record.attachment else None,
+            "attachment_size_bytes": record.attachment.attachment_size_bytes if record.attachment else None,
+            "attachment_storage_path": record.attachment.attachment_storage_path if record.attachment else None,
+            "attachment_text_extracted": record.attachment.attachment_text_extracted if record.attachment else None,
+            "attachment_summary": record.attachment.attachment_summary if record.attachment else None,
+            "evidence_from_attachment": json.dumps(record.attachment.evidence_from_attachment if record.attachment else []),
+            "attachment_signals": json.dumps(record.attachment.attachment_signals if record.attachment else {}),
+            "attachment_used": record.attachment.attachment_used if record.attachment else False,
+            "triage": json.dumps(record.triage.model_dump()),
+            "ticket": json.dumps(record.ticket.model_dump()),
+            "notifs": json.dumps([n.model_dump() for n in record.notifications]),
         },
     )
     db.commit()
@@ -189,10 +211,6 @@ def list_incidents(db: Session, tenant_id: str | None = None) -> list[IncidentRe
 
 
 def find_open_duplicate_incident(db: Session, tenant_id: str, description: str) -> IncidentRecord | None:
-    """
-    Find latest open incident in the same tenant with equivalent normalized
-    description text. This is a pragmatic dedup baseline for hackathon scope.
-    """
     normalized = " ".join(description.lower().split())
     row = db.execute(
         text(
@@ -201,7 +219,7 @@ def find_open_duplicate_incident(db: Session, tenant_id: str, description: str) 
             FROM incidents
             WHERE tenant_id = :tid
               AND status = 'open'
-              AND regexp_replace(lower(description), '\\s+', ' ', 'g') = :desc_norm
+              AND regexp_replace(lower(description), '\s+', ' ', 'g') = :desc_norm
             ORDER BY created_at DESC
             LIMIT 1
             """
@@ -216,11 +234,6 @@ def resolve_incident(
     incident_id: str,
     extra_notification: NotificationRecord,
 ) -> IncidentRecord | None:
-    """
-    Mark incident as resolved, persist resolved_at, and append the
-    reporter notification to the JSONB array — all in one UPDATE.
-    Returns the refreshed record, or None if incident_id was not found.
-    """
     row = db.execute(
         text("SELECT incident_id FROM incidents WHERE incident_id = :iid"),
         {"iid": incident_id},
@@ -233,15 +246,15 @@ def resolve_incident(
         text(
             """
             UPDATE incidents
-            SET  status       = 'resolved',
-                 resolved_at  = :now,
-                 notifications = notifications || cast(:notif as jsonb)
+            SET status = 'resolved',
+                resolved_at = :now,
+                notifications = notifications || cast(:notif as jsonb)
             WHERE incident_id = :iid
             """
         ),
         {
-            "iid":   incident_id,
-            "now":   now,
+            "iid": incident_id,
+            "now": now,
             "notif": json.dumps([extra_notification.model_dump()]),
         },
     )
@@ -254,9 +267,9 @@ def tenant_dashboard(db: Session, tenant_id: str) -> TenantDashboard:
         text(
             """
             SELECT
-                COUNT(*)                                                  AS total,
-                COUNT(*) FILTER (WHERE status = 'open')                  AS open_count,
-                COUNT(*) FILTER (WHERE status = 'resolved')              AS resolved_count,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'open') AS open_count,
+                COUNT(*) FILTER (WHERE status = 'resolved') AS resolved_count,
                 COUNT(*) FILTER (WHERE triage->>'severity' = 'critical') AS critical_count
             FROM incidents
             WHERE tenant_id = :tid
@@ -342,10 +355,6 @@ def list_audit_logs(
     return [_row_to_audit(r) for r in rows]
 
 
-# ──────────────────────────────────────────────────────────────
-# Audit log repository
-# ──────────────────────────────────────────────────────────────
-
 def write_audit_log(
     db: Session,
     stage: str,
@@ -353,8 +362,6 @@ def write_audit_log(
     incident_id: str | None = None,
     payload: dict | None = None,
 ) -> None:
-    """Fire-and-forget audit write.  Errors are swallowed so that an
-    audit failure never aborts the main request flow."""
     try:
         db.execute(
             text(
@@ -364,9 +371,9 @@ def write_audit_log(
                 """
             ),
             {
-                "tid":     tenant_id,
-                "iid":     incident_id,
-                "stage":   stage,
+                "tid": tenant_id,
+                "iid": incident_id,
+                "stage": stage,
                 "payload": json.dumps(payload or {}),
             },
         )

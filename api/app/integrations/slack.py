@@ -1,38 +1,28 @@
 """
-integrations/slack.py – Real Slack Incoming Webhook integration for AURA.
-
-Requires env vars:
-  SLACK_WEBHOOK_URL   Full Incoming Webhook URL from Slack App config
-                      e.g. https://hooks.slack.com/services/T.../B.../...
-
-When the URL is missing or MOCK_MODE=true, falls back to mock.
-
-Slack Incoming Webhooks docs:
-  https://api.slack.com/messaging/webhooks
-  https://api.slack.com/reference/block-kit/blocks
+integrations/slack.py - Real Slack Incoming Webhook integration for AURA.
 """
 from __future__ import annotations
 
 import json
 import os
-from urllib import request as urllib_request, error as urllib_error
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from ..models import TicketRecord, TriageOutput
 from ..observability import log_event
 
-
 _SEV_COLORS: dict[str, str] = {
     "critical": "#ef4444",
-    "high":     "#f97316",
-    "medium":   "#eab308",
-    "low":      "#22c55e",
+    "high": "#f97316",
+    "medium": "#eab308",
+    "low": "#22c55e",
 }
 
 _SEV_EMOJI: dict[str, str] = {
-    "critical": "🔴",
-    "high":     "🟠",
-    "medium":   "🟡",
-    "low":      "🟢",
+    "critical": "red_circle",
+    "high": "large_orange_circle",
+    "medium": "large_yellow_circle",
+    "low": "large_green_circle",
 }
 
 
@@ -44,7 +34,7 @@ def _slack_available() -> bool:
 
 def _http_post_json(url: str, payload: dict) -> None:
     body = json.dumps(payload).encode("utf-8")
-    req  = urllib_request.Request(
+    req = urllib_request.Request(
         url,
         data=body,
         headers={"Content-Type": "application/json"},
@@ -69,18 +59,13 @@ def notify_slack(
     triage: TriageOutput,
     reporter_email: str,
 ) -> str:
-    """
-    Send a rich Block Kit message to Slack.
-    Returns a detail string for the NotificationRecord.
-    Falls back to mock if Slack is not configured.
-    """
     if not _slack_available():
         return _mock_detail(ticket, triage)
 
     webhook_url = os.getenv("SLACK_WEBHOOK_URL", "")
-    sev         = triage.severity
-    color       = _SEV_COLORS.get(sev, "#94a3b8")
-    emoji       = _SEV_EMOJI.get(sev, "⚪")
+    sev = triage.severity
+    color = _SEV_COLORS.get(sev, "#94a3b8")
+    emoji = _SEV_EMOJI.get(sev, "white_circle")
     ticket_link = f"<{ticket.url}|{ticket.ticket_id}>" if ticket.url else ticket.ticket_id
 
     blocks = [
@@ -88,7 +73,7 @@ def notify_slack(
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"{emoji} AURA Incident Alert — {sev.upper()}",
+                "text": f":{emoji}: AURA Incident Alert - {sev.upper()}",
                 "emoji": True,
             },
         },
@@ -108,57 +93,61 @@ def notify_slack(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*📋 Summary*\n{triage.technical_summary}",
+                "text": f"*Summary*\n{triage.technical_summary}",
             },
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*🔎 Root Cause*\n{triage.root_cause_analysis}",
+                "text": f"*Attachment Evidence*\n{triage.attachment_summary or 'No attachment evidence captured.'}",
             },
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*🛠 Auto-Fix*\n{triage.proposed_fix}",
+                "text": f"*Attachment Influence*\n{triage.attachment_influence_reasoning or 'No attachment influence.'}",
             },
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*⚡ CLI Command*\n```{triage.proposed_cli_command}```",
+                "text": f"*Root Cause*\n{triage.root_cause_analysis}",
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Auto-Fix*\n{triage.proposed_fix}",
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*CLI Command*\n```{triage.proposed_cli_command}```",
             },
         },
     ]
 
-    # Add runbook if present
     if triage.runbook_suggestions:
-        runbook_text = "\n".join(f"• {s}" for s in triage.runbook_suggestions[:4])
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*📖 Runbook Steps*\n{runbook_text}"},
-        })
-
-    blocks.append({"type": "divider"})
-    blocks.append({
-        "type": "context",
-        "elements": [
+        runbook_text = "\n".join(f"- {step}" for step in triage.runbook_suggestions[:4])
+        blocks.append(
             {
-                "type": "mrkdwn",
-                "text": f"🤖 Sent by AURA SRE Intelligence  •  Ticket via {ticket.provider}  •  <{ticket.url}|Open ticket>",
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Runbook Steps*\n{runbook_text}"},
             }
-        ],
-    })
+        )
 
     payload = {
         "attachments": [
             {
-                "color":  color,
+                "color": color,
                 "blocks": blocks,
-                "fallback": f"[AURA/{sev.upper()}] {incident_id} on {triage.affected_service} — Ticket: {ticket.ticket_id}",
+                "fallback": f"[AURA/{sev.upper()}] {incident_id} on {triage.affected_service} - Ticket: {ticket.ticket_id}",
             }
         ]
     }
@@ -166,17 +155,12 @@ def notify_slack(
     try:
         _http_post_json(webhook_url, payload)
         detail = (
-            f"Team notified on Slack (webhook). "
-            f"Ticket={ticket.ticket_id}, service={triage.affected_service}, severity={sev}."
+            f"Team notified on Slack (webhook). Ticket={ticket.ticket_id}, "
+            f"service={triage.affected_service}, severity={sev}. "
+            f"Attachment evidence={triage.attachment_summary or 'none'}."
         )
-        log_event(
-            "slack_notification_sent",
-            incident_id=incident_id,
-            ticket_id=ticket.ticket_id,
-            severity=sev,
-        )
+        log_event("slack_notification_sent", incident_id=incident_id, ticket_id=ticket.ticket_id, severity=sev)
         return detail
-
     except RuntimeError as exc:
         log_event("slack_notification_failed", incident_id=incident_id, error=str(exc))
         raise
@@ -188,15 +172,11 @@ def notify_slack_resolved(
     ticket: TicketRecord,
     reporter_email: str,
 ) -> str:
-    """
-    Send a resolution notification to Slack.
-    """
     if not _slack_available():
         return f"[mock] Resolved notification sent for {incident_id}."
 
     webhook_url = os.getenv("SLACK_WEBHOOK_URL", "")
     ticket_link = f"<{ticket.url}|{ticket.ticket_id}>" if ticket.url else ticket.ticket_id
-
     payload = {
         "attachments": [
             {
@@ -204,7 +184,7 @@ def notify_slack_resolved(
                 "blocks": [
                     {
                         "type": "header",
-                        "text": {"type": "plain_text", "text": "✅ Incident Resolved", "emoji": True},
+                        "text": {"type": "plain_text", "text": "Incident Resolved", "emoji": True},
                     },
                     {
                         "type": "section",
@@ -215,16 +195,11 @@ def notify_slack_resolved(
                             {"type": "mrkdwn", "text": f"*Reporter notified*\n{reporter_email}"},
                         ],
                     },
-                    {
-                        "type": "context",
-                        "elements": [{"type": "mrkdwn", "text": "🤖 AURA SRE Intelligence · Automated resolution notification"}],
-                    },
                 ],
                 "fallback": f"[AURA] Incident {incident_id} has been resolved.",
             }
         ]
     }
-
     try:
         _http_post_json(webhook_url, payload)
         log_event("slack_resolved_sent", incident_id=incident_id)
@@ -236,6 +211,7 @@ def notify_slack_resolved(
 
 def _mock_detail(ticket: TicketRecord, triage: TriageOutput) -> str:
     return (
-        f"Team notified on mock-slack. "
-        f"Ticket={ticket.ticket_id}, service={triage.affected_service}, severity={triage.severity}."
+        f"Team notified on mock-slack. Ticket={ticket.ticket_id}, "
+        f"service={triage.affected_service}, severity={triage.severity}. "
+        f"Attachment evidence={triage.attachment_summary or 'none'}."
     )

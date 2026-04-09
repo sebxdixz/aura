@@ -70,11 +70,13 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
       MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
+      ATTACHMENTS_DIR: ${ATTACHMENTS_DIR:-/workspace/attachments}
       DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
       - ./ecommerce_repo:${ECOMMERCE_CODEBASE_PATH:-/workspace/ecommerce_repo}:rw
+      - ./runtime/attachments:${ATTACHMENTS_DIR:-/workspace/attachments}:rw
     depends_on:
       db:
         condition: service_healthy

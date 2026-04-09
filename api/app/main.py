@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 
 from pydantic import BaseModel
 
@@ -9,8 +9,9 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadF
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, get_db, ping_db
-from .guardrails import validate_description, validate_file
+from .attachments import persist_attachment, process_attachment
+from .database import SessionLocal, ensure_runtime_schema, get_db, ping_db
+from .guardrails import validate_attachment, validate_description
 from .insights import get_tenant_audit_logs, get_tenant_insights_summary
 from .models import (
     AuditLogRecord,
@@ -39,7 +40,7 @@ from .services import (
     tenant_dashboard,
 )
 
-app = FastAPI(title="AURA API", version="0.3.0")
+app = FastAPI(title="AURA API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +55,7 @@ class TenantRegisterPayload(BaseModel):
     tenant_id: str
     name: str
 
+
 class GithubSyncPayload(BaseModel):
     tenant_id: str
     repo_url: str
@@ -62,6 +64,7 @@ class GithubSyncPayload(BaseModel):
 
 @app.on_event("startup")
 def startup_rag_bootstrap() -> None:
+    ensure_runtime_schema()
     db = SessionLocal()
     try:
         status = rag_status(db)
@@ -81,10 +84,6 @@ def startup_rag_bootstrap() -> None:
         db.close()
 
 
-# ──────────────────────────────────────────────────────────────
-# Health / meta
-# ──────────────────────────────────────────────────────────────
-
 @app.get("/health")
 def health() -> dict[str, str]:
     log_event("health_check")
@@ -103,16 +102,11 @@ def metrics() -> dict[str, object]:
     return {"service": "api", **snapshot}
 
 
-# ──────────────────────────────────────────────────────────────
-# Incident endpoints
-# ──────────────────────────────────────────────────────────────
-
 @app.get("/api/incidents", response_model=list[IncidentRecord])
 def api_list_incidents(
     tenant_id: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[IncidentRecord]:
-    """List incidents. Filter by tenant_id query param when provided."""
     return list_incidents(db, tenant_id=tenant_id)
 
 
@@ -140,23 +134,70 @@ async def submit_incident(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    incident_id = create_incident_id()
+    ensure_tenant(db, tenant_id=tenant_id)
+
     file_meta: FileMeta | None = None
     file_bytes: bytes | None = None
+    attachment_record = None
     has_file = attachment is not None
+
     if attachment is not None:
         file_bytes = await attachment.read()
         try:
-            validate_file(attachment.content_type, len(file_bytes))
+            log_event(
+                "attachment_received",
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                attachment_type=(attachment.content_type or "").lower(),
+            )
+            safe_filename = validate_attachment(
+                filename=attachment.filename,
+                content_type=attachment.content_type,
+                size_bytes=len(file_bytes),
+                content_bytes=file_bytes,
+            )
+            log_event(
+                "attachment_validated",
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                attachment_type=(attachment.content_type or "").lower(),
+            )
         except ValueError as exc:
+            log_event(
+                "attachment_rejected",
+                incident_id=incident_id,
+                tenant_id=tenant_id,
+                attachment_type=(attachment.content_type or "").lower(),
+                error=str(exc),
+            )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        file_meta = FileMeta(
-            filename=attachment.filename or "unknown",
+
+        storage_path = persist_attachment(
+            incident_id=incident_id,
+            filename=safe_filename,
+            content_bytes=file_bytes,
+        )
+        log_event(
+            "attachment_saved",
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            attachment_type=(attachment.content_type or "").lower(),
+        )
+        attachment_record = process_attachment(
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            filename=safe_filename,
             content_type=attachment.content_type or "application/octet-stream",
-            size_bytes=len(file_bytes),
+            content_bytes=file_bytes,
+            storage_path=storage_path,
+        )
+        file_meta = FileMeta(
+            filename=attachment_record.attachment_filename,
+            content_type=attachment_record.attachment_mime_type,
+            size_bytes=attachment_record.attachment_size_bytes,
         )
 
-    incident_id = create_incident_id()
-    ensure_tenant(db, tenant_id=tenant_id)
     log_event("incident_ingested", incident_id=incident_id, tenant_id=tenant_id, has_file=has_file)
 
     duplicate = find_duplicate_incident(db, tenant_id=tenant_id, description=description)
@@ -180,23 +221,21 @@ async def submit_incident(
             reporter_email=reporter_email,
             description=description,
             file_meta=file_meta,
+            attachment=attachment_record,
             triage=triage,
             ticket=duplicate.ticket,
             notifications=[dedup_note],
         )
         save_incident(db, incident)
-        log_event(
-            "incident_deduplicated",
-            incident_id=incident_id,
-            tenant_id=tenant_id,
-            duplicate_of=duplicate.incident_id,
-        )
+        log_event("incident_deduplicated", incident_id=incident_id, tenant_id=tenant_id, duplicate_of=duplicate.incident_id)
         return incident
 
     triage = run_triage(
+        incident_id=incident_id,
         tenant_id=tenant_id,
         description=description,
         has_file=has_file,
+        attachment=attachment_record,
         attachment_filename=file_meta.filename if file_meta else None,
         attachment_content_type=file_meta.content_type if file_meta else None,
         attachment_bytes=file_bytes,
@@ -225,6 +264,7 @@ async def submit_incident(
         reporter_email=reporter_email,
         description=description,
         file_meta=file_meta,
+        attachment=attachment_record,
         triage=triage,
         ticket=ticket,
         notifications=[team_notification],
@@ -243,10 +283,6 @@ def api_resolve_incident(
         raise HTTPException(status_code=404, detail="incident not found")
     return incident
 
-
-# ──────────────────────────────────────────────────────────────
-# Tenant endpoints
-# ──────────────────────────────────────────────────────────────
 
 @app.post("/api/tenants/register", response_model=TenantRecord)
 def api_register_tenant(
@@ -370,11 +406,11 @@ def _assert_tenant_admin(tenant_id: str, provided_key: str | None) -> None:
         return
     raise HTTPException(status_code=403, detail="invalid tenant admin credentials")
 
+
 @app.post("/api/auth/verify")
 def api_auth_verify(
     tenant_id: str = Header(..., alias="x-tenant-id"),
-    x_tenant_admin_key: str = Header(...)
+    x_tenant_admin_key: str = Header(...),
 ) -> dict:
     _assert_tenant_admin(tenant_id, x_tenant_admin_key)
     return {"status": "ok", "tenant_id": tenant_id}
-
