@@ -12,6 +12,7 @@ Public API is unchanged so that main.py requires minimal edits:
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from . import repository as repo
 from .guardrails import validate_tool_name
 from .integrations.jira import create_jira_ticket
+from .integrations.jira import test_jira_credentials
 from .integrations.llm import (
     build_attachment_context,
     generate_model_triage,
@@ -30,6 +32,7 @@ from .integrations.llm import (
     is_two_stage_openrouter_enabled,
 )
 from .integrations.slack import notify_slack, notify_slack_resolved
+from .integrations.slack import test_slack_credentials
 from .models import (
     IncidentRecord,
     NotificationRecord,
@@ -41,6 +44,7 @@ from .models import (
 from .observability import log_event
 from .rag import retrieve_code_context
 from .react_orchestrator import create_ticket_via_react, is_react_mcp_enabled, notify_team_via_react
+from .secrets import encrypt_text
 
 # ---------------------------------------------------------------------------
 # FAIL_COUNTS stays in-memory intentionally – it tracks transient retry state
@@ -55,6 +59,20 @@ FAIL_COUNTS: dict[str, int] = {}
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _tenant_integration_credentials(
+    db: Session | None,
+    *,
+    tenant_id: str,
+    provider: str,
+) -> dict[str, str] | None:
+    if db is None or not tenant_id.strip():
+        return None
+    try:
+        return repo.get_tenant_integration_secrets(db, tenant_id=tenant_id, provider=provider)
+    except Exception:
+        return None
 
 
 def infer_service(description: str) -> str:
@@ -231,6 +249,9 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
         proposed_fix = _coerce_text(payload.get("proposed_fix"), fallback.proposed_fix)
         proposed_cli_command = _coerce_text(payload.get("proposed_cli_command"), fallback.proposed_cli_command)
         llm_mode = _coerce_text(payload.get("llm_mode"), "multimodal_live")
+        llm_usage = payload.get("_meta_usage", {})
+        if not isinstance(llm_usage, dict):
+            llm_usage = {}
         return TriageOutput(
             severity=severity,  # type: ignore[arg-type]
             affected_service=affected_service,
@@ -246,6 +267,7 @@ def _triage_from_model(payload: dict[str, object], fallback: TriageOutput) -> Tr
             proposed_fix=proposed_fix,
             proposed_cli_command=proposed_cli_command,
             llm_mode=llm_mode,
+            llm_usage=llm_usage,
         )
     except Exception:
         return None
@@ -286,7 +308,13 @@ def _coerce_int(value: object, fallback: int, minimum: int, maximum: int) -> int
 # Integration helpers (ticket / notify) — unchanged logic
 # ──────────────────────────────────────────────────────────────
 
-def create_ticket(incident_id: str, triage: TriageOutput, tenant_id: str = "", description: str = "") -> TicketRecord:
+def create_ticket(
+    incident_id: str,
+    triage: TriageOutput,
+    tenant_id: str = "",
+    description: str = "",
+    db: Session | None = None,
+) -> TicketRecord:
     validate_tool_name("create_ticket")
 
     if is_react_mcp_enabled():
@@ -304,6 +332,9 @@ def create_ticket(incident_id: str, triage: TriageOutput, tenant_id: str = "", d
 
     provider          = os.getenv("TICKETING_PROVIDER", "mock-jira")
     fallback_provider = os.getenv("TICKETING_FALLBACK_PROVIDER", "mock-linear")
+    jira_credentials = _tenant_integration_credentials(db, tenant_id=tenant_id, provider="jira")
+    if jira_credentials:
+        provider = "jira"
 
     def _attempt(prov: str, fail_flag: str) -> TicketRecord:
         # ── Real Jira ──────────────────────────────────────────
@@ -318,6 +349,7 @@ def create_ticket(incident_id: str, triage: TriageOutput, tenant_id: str = "", d
                 proposed_fix=triage.proposed_fix,
                 cli_command=triage.proposed_cli_command,
                 tenant_id=tenant_id,
+                credentials=jira_credentials,
             )
         # ── Mock / fallback ────────────────────────────────────
         return _create_ticket_with_provider(incident_id, prov, fail_flag=fail_flag)
@@ -339,6 +371,7 @@ def notify_team(
     tenant_id: str = "",
     reporter_email: str = "",
     description: str = "",
+    db: Session | None = None,
 ) -> NotificationRecord:
     validate_tool_name("notify_team")
 
@@ -360,6 +393,9 @@ def notify_team(
 
     provider          = os.getenv("COMMUNICATOR_PROVIDER", "mock-slack")
     fallback_provider = os.getenv("COMMUNICATOR_FALLBACK_PROVIDER", "mock-teams")
+    slack_credentials = _tenant_integration_credentials(db, tenant_id=tenant_id, provider="slack")
+    if slack_credentials:
+        provider = "slack"
 
     def _attempt(prov: str, fail_flag: str) -> str:
         # ── Real Slack ─────────────────────────────────────────
@@ -370,6 +406,7 @@ def notify_team(
                 ticket=ticket,
                 triage=triage,
                 reporter_email=reporter_email,
+                credentials=slack_credentials,
             )
         # ── Mock / fallback ────────────────────────────────────
         return _notify_team_with_provider(prov, ticket, triage, fail_flag=fail_flag)
@@ -420,7 +457,11 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
         stage="incident_saved",
         tenant_id=record.tenant_id,
         incident_id=record.incident_id,
-        payload={"severity": record.triage.severity, "service": record.triage.affected_service},
+        payload={
+            "severity": record.triage.severity, 
+            "service": record.triage.affected_service,
+            "llm_usage": record.triage.llm_usage
+        },
     )
     return result
 
@@ -437,13 +478,22 @@ def find_duplicate_incident(db: Session, tenant_id: str, description: str) -> In
     return repo.find_open_duplicate_incident(db, tenant_id=tenant_id, description=description)
 
 
-def resolve_incident(db: Session, incident_id: str) -> IncidentRecord | None:
+def resolve_incident(db: Session, incident_id: str, resolution_notes: str) -> IncidentRecord | None:
     record = repo.get_incident(db, incident_id)
     if not record:
         return None
 
+    cleaned_notes = resolution_notes.strip()
+    if not cleaned_notes:
+        raise ValueError("resolution_notes is required")
+
     reporter_event = notify_reporter(incident_id, str(record.reporter_email))
-    updated = repo.resolve_incident(db, incident_id, extra_notification=reporter_event)
+    updated = repo.resolve_incident(
+        db,
+        incident_id,
+        resolution_notes=cleaned_notes,
+        extra_notification=reporter_event,
+    )
 
     if updated:
         repo.write_audit_log(
@@ -451,6 +501,7 @@ def resolve_incident(db: Session, incident_id: str) -> IncidentRecord | None:
             stage="incident_resolved",
             tenant_id=updated.tenant_id,
             incident_id=incident_id,
+            payload={"resolution_notes": cleaned_notes},
         )
         log_event("incident_resolved", incident_id=incident_id)
 
@@ -463,6 +514,7 @@ def resolve_incident(db: Session, incident_id: str) -> IncidentRecord | None:
                     tenant_id=updated.tenant_id,
                     ticket=updated.ticket,
                     reporter_email=str(updated.reporter_email),
+                    credentials=_tenant_integration_credentials(db, tenant_id=updated.tenant_id, provider="slack"),
                 )
             except RuntimeError as exc:
                 log_event("slack_resolved_skipped", incident_id=incident_id, error=str(exc))
@@ -490,6 +542,62 @@ def ensure_tenant(db: Session, tenant_id: str) -> TenantRecord:
 
 def tenant_dashboard(db: Session, tenant_id: str) -> TenantDashboard:
     return repo.tenant_dashboard(db, tenant_id)
+
+
+def integration_status(db: Session, tenant_id: str):
+    return repo.tenant_integrations_status(db, tenant_id)
+
+
+def save_slack_integration(db: Session, tenant_id: str, payload: dict[str, str]) -> None:
+    existing = _tenant_integration_credentials(db, tenant_id=tenant_id, provider="slack") or {}
+    cleaned = dict(existing)
+    for key, value in payload.items():
+        text_value = str(value or "").strip()
+        if text_value:
+            cleaned[key] = text_value
+    encrypted = encrypt_text(json.dumps(cleaned))
+    repo.upsert_tenant_integration(
+        db,
+        tenant_id=tenant_id,
+        provider="slack",
+        encrypted_config=encrypted,
+        configured_fields=sorted(cleaned.keys()),
+    )
+    repo.write_audit_log(db, stage="integration_config_saved", tenant_id=tenant_id, payload={"provider": "slack"})
+    log_event("integration_config_saved", tenant_id=tenant_id, provider="slack")
+
+
+def save_jira_integration(db: Session, tenant_id: str, payload: dict[str, str]) -> None:
+    existing = _tenant_integration_credentials(db, tenant_id=tenant_id, provider="jira") or {}
+    cleaned = dict(existing)
+    for key, value in payload.items():
+        text_value = str(value or "").strip()
+        if text_value:
+            cleaned[key] = text_value
+    encrypted = encrypt_text(json.dumps(cleaned))
+    repo.upsert_tenant_integration(
+        db,
+        tenant_id=tenant_id,
+        provider="jira",
+        encrypted_config=encrypted,
+        configured_fields=sorted(cleaned.keys()),
+    )
+    repo.write_audit_log(db, stage="integration_config_saved", tenant_id=tenant_id, payload={"provider": "jira"})
+    log_event("integration_config_saved", tenant_id=tenant_id, provider="jira")
+
+
+def test_slack_integration(db: Session, tenant_id: str) -> tuple[bool, str]:
+    creds = _tenant_integration_credentials(db, tenant_id=tenant_id, provider="slack")
+    if not creds:
+        return False, "Slack integration is not configured for this tenant."
+    return test_slack_credentials(creds)
+
+
+def test_jira_integration(db: Session, tenant_id: str, *, create_issue: bool = True) -> tuple[bool, str]:
+    creds = _tenant_integration_credentials(db, tenant_id=tenant_id, provider="jira")
+    if not creds:
+        return False, "Jira integration is not configured for this tenant."
+    return test_jira_credentials(creds, create_issue=create_issue)
 
 
 # ──────────────────────────────────────────────────────────────

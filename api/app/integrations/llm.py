@@ -147,6 +147,19 @@ def generate_model_triage(
     parsed = json.loads(content)
     if not isinstance(parsed, dict):
         return None
+        
+    u_p = getattr(response.usage, "prompt_tokens", 0) if response.usage else 0
+    u_c = getattr(response.usage, "completion_tokens", 0) if response.usage else 0
+    cost = 0.0
+    if "gpt-4o-mini" in model:
+        cost = (u_p * 0.150/1_000_000) + (u_c * 0.600/1_000_000)
+    parsed["_meta_usage"] = {
+        "model": model,
+        "prompt_tokens": u_p,
+        "completion_tokens": u_c,
+        "total_tokens": u_p + u_c,
+        "cost_usd": cost,
+    }
     return parsed
 
 
@@ -205,6 +218,18 @@ def generate_two_stage_triage(
         return None
 
     analysis["llm_mode"] = "multimodal_two_stage_openrouter"
+    
+    # Merge meta usage
+    ext_meta = extraction.pop("_meta_usage", {})
+    ana_meta = analysis.pop("_meta_usage", {})
+    if ext_meta or ana_meta:
+        analysis["_meta_usage"] = {
+            "model": f"{ext_meta.get('model','')}, {ana_meta.get('model','')}",
+            "prompt_tokens": ext_meta.get("prompt_tokens",0) + ana_meta.get("prompt_tokens",0),
+            "completion_tokens": ext_meta.get("completion_tokens",0) + ana_meta.get("completion_tokens",0),
+            "total_tokens": ext_meta.get("total_tokens",0) + ana_meta.get("total_tokens",0),
+            "cost_usd": ext_meta.get("cost_usd",0) + ana_meta.get("cost_usd",0),
+        }
     return analysis
 
 

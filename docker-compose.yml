@@ -70,6 +70,7 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       MCP_BRIDGE_URL: ${MCP_BRIDGE_URL:-http://mcp_bridge:8080/invoke}
       MCP_BRIDGE_TOKEN: ${MCP_BRIDGE_TOKEN:-}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-local-dev-secrets-key}
       DATABASE_URL: postgresql://${POSTGRES_USER:-aura}:${POSTGRES_PASSWORD:-aura}@db:5432/${POSTGRES_DB:-aura}
     ports:
       - "${API_PORT:-8000}:8000"
@@ -84,20 +85,10 @@ services:
   web:
     build:
       context: ./web
-      dockerfile: Dockerfile.report
+      dockerfile: Dockerfile.unified
     container_name: aura-web
     ports:
       - "${WEB_PORT:-3000}:80"
-    depends_on:
-      - api
-
-  web_dashboard:
-    build:
-      context: ./web
-      dockerfile: Dockerfile.dashboard
-    container_name: aura-web-dashboard
-    ports:
-      - "${DASHBOARD_PORT:-3001}:80"
     depends_on:
       - api
 

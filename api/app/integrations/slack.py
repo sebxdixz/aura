@@ -36,10 +36,14 @@ _SEV_EMOJI: dict[str, str] = {
 }
 
 
-def _slack_available() -> bool:
+def _slack_available(credentials: dict[str, str] | None = None) -> bool:
     if os.getenv("MOCK_MODE", "true").lower() in {"1", "true", "yes", "on"}:
         return False
-    return bool(os.getenv("SLACK_WEBHOOK_URL", "").strip())
+    creds = credentials or {}
+    webhook = str(creds.get("webhook_url", "")).strip() or os.getenv("SLACK_WEBHOOK_URL", "").strip()
+    bot_token = str(creds.get("bot_token", "")).strip()
+    channel_id = str(creds.get("default_channel_id", "")).strip()
+    return bool(webhook or (bot_token and channel_id))
 
 
 def _http_post_json(url: str, payload: dict) -> None:
@@ -68,16 +72,20 @@ def notify_slack(
     ticket: TicketRecord,
     triage: TriageOutput,
     reporter_email: str,
+    credentials: dict[str, str] | None = None,
 ) -> str:
     """
     Send a rich Block Kit message to Slack.
     Returns a detail string for the NotificationRecord.
     Falls back to mock if Slack is not configured.
     """
-    if not _slack_available():
+    if not _slack_available(credentials):
         return _mock_detail(ticket, triage)
 
-    webhook_url = os.getenv("SLACK_WEBHOOK_URL", "")
+    creds = credentials or {}
+    webhook_url = str(creds.get("webhook_url", "")).strip() or os.getenv("SLACK_WEBHOOK_URL", "")
+    bot_token = str(creds.get("bot_token", "")).strip()
+    channel_id = str(creds.get("default_channel_id", "")).strip()
     sev         = triage.severity
     color       = _SEV_COLORS.get(sev, "#94a3b8")
     emoji       = _SEV_EMOJI.get(sev, "⚪")
@@ -164,7 +172,10 @@ def notify_slack(
     }
 
     try:
-        _http_post_json(webhook_url, payload)
+        if webhook_url:
+            _http_post_json(webhook_url, payload)
+        else:
+            _post_via_bot_token(bot_token, channel_id, payload)
         detail = (
             f"Team notified on Slack (webhook). "
             f"Ticket={ticket.ticket_id}, service={triage.affected_service}, severity={sev}."
@@ -187,14 +198,18 @@ def notify_slack_resolved(
     tenant_id: str,
     ticket: TicketRecord,
     reporter_email: str,
+    credentials: dict[str, str] | None = None,
 ) -> str:
     """
     Send a resolution notification to Slack.
     """
-    if not _slack_available():
+    if not _slack_available(credentials):
         return f"[mock] Resolved notification sent for {incident_id}."
 
-    webhook_url = os.getenv("SLACK_WEBHOOK_URL", "")
+    creds = credentials or {}
+    webhook_url = str(creds.get("webhook_url", "")).strip() or os.getenv("SLACK_WEBHOOK_URL", "")
+    bot_token = str(creds.get("bot_token", "")).strip()
+    channel_id = str(creds.get("default_channel_id", "")).strip()
     ticket_link = f"<{ticket.url}|{ticket.ticket_id}>" if ticket.url else ticket.ticket_id
 
     payload = {
@@ -226,7 +241,10 @@ def notify_slack_resolved(
     }
 
     try:
-        _http_post_json(webhook_url, payload)
+        if webhook_url:
+            _http_post_json(webhook_url, payload)
+        else:
+            _post_via_bot_token(bot_token, channel_id, payload)
         log_event("slack_resolved_sent", incident_id=incident_id)
         return f"Resolved notification sent to Slack. Ticket={ticket.ticket_id}."
     except RuntimeError as exc:
@@ -239,3 +257,54 @@ def _mock_detail(ticket: TicketRecord, triage: TriageOutput) -> str:
         f"Team notified on mock-slack. "
         f"Ticket={ticket.ticket_id}, service={triage.affected_service}, severity={triage.severity}."
     )
+
+
+def test_slack_credentials(credentials: dict[str, str]) -> tuple[bool, str]:
+    webhook_url = str(credentials.get("webhook_url", "")).strip()
+    bot_token = str(credentials.get("bot_token", "")).strip()
+    channel_id = str(credentials.get("default_channel_id", "")).strip()
+    if webhook_url:
+        try:
+            _http_post_json(webhook_url, {"text": "AURA Slack integration test OK."})
+            return True, "Slack webhook test message sent."
+        except RuntimeError as exc:
+            return False, str(exc)
+    if bot_token and channel_id:
+        try:
+            _post_via_bot_token(bot_token, channel_id, {"text": "AURA Slack integration test OK."})
+            return True, "Slack bot token test message sent."
+        except RuntimeError as exc:
+            return False, str(exc)
+    return False, "Missing Slack credentials. Use webhook_url or bot_token + default_channel_id."
+
+
+def _post_via_bot_token(bot_token: str, channel_id: str, payload: dict) -> None:
+    if not bot_token or not channel_id:
+        raise RuntimeError("Slack bot token and default channel id are required")
+    text = str(payload.get("text") or "AURA notification")
+    blocks = payload.get("attachments", [])
+    body = {
+        "channel": channel_id,
+        "text": text,
+    }
+    if blocks:
+        body["attachments"] = blocks
+    req = urllib_request.Request(
+        "https://slack.com/api/chat.postMessage",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {bot_token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=10) as resp:
+            resp_body = json.loads(resp.read().decode("utf-8"))
+        if not bool(resp_body.get("ok")):
+            raise RuntimeError(f"Slack API error: {resp_body.get('error', 'unknown')}")
+    except urllib_error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Slack HTTP {exc.code}: {body_text}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"Slack connection error: {exc}") from exc

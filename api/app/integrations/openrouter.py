@@ -58,6 +58,21 @@ def openrouter_json_completion(
         content = response.choices[0].message.content or "{}"
         parsed = json.loads(content)
         if isinstance(parsed, dict):
+            u_p = getattr(response.usage, "prompt_tokens", 0) if response.usage else 0
+            u_c = getattr(response.usage, "completion_tokens", 0) if response.usage else 0
+            # OpenRouter passes total_cost natively or it can be inferred
+            cost = getattr(response, "total_cost", 0)  # non-standard attr OpenRouter injects sometimes
+            price_map = {"openai/gpt-4o-mini": (0.150/1_000_000, 0.600/1_000_000), "google/gemini-2.5-flash-lite-preview-09-2025": (0.075/1_000_000, 0.3/1_000_000)}
+            in_price, out_price = price_map.get(model, (0.0, 0.0))
+            if not cost and in_price > 0:
+                cost = (u_p * in_price) + (u_c * out_price)
+            parsed["_meta_usage"] = {
+                "model": model,
+                "prompt_tokens": u_p,
+                "completion_tokens": u_c,
+                "total_tokens": u_p + u_c,
+                "cost_usd": cost,
+            }
             return parsed
     except Exception:
         return None

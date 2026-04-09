@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURA | Welcome</title>
+  <meta name="description" content="AURA onboarding: tenant login/register and customer intake URL." />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f3f3f3;
+      --surface: #ffffff;
+      --ink: #111111;
+      --muted: #5d5d5d;
+      --line: #d9d9d9;
+      --line-soft: #ececec;
+      --font-sans: "Inter", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      background-image: radial-gradient(circle, #cdcdcd 1px, transparent 1px);
+      background-size: 24px 24px;
+      font-family: var(--font-sans);
+      color: var(--ink);
+      padding: clamp(20px, 4vw, 46px);
+    }
+
+    .wrap { max-width: 1220px; margin: 0 auto; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      gap: 12px;
+    }
+
+    .brand {
+      font-size: 34px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      text-transform: uppercase;
+    }
+
+    .lang-toggle {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .lang-btn {
+      border: none;
+      background: transparent;
+      padding: 8px 11px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .lang-btn.active {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      margin-bottom: 22px;
+    }
+
+    .hero { padding: clamp(28px, 4vw, 48px); }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: clamp(42px, 7vw, 78px);
+      letter-spacing: -2px;
+      text-transform: uppercase;
+      line-height: 0.9;
+      margin-bottom: 16px;
+    }
+
+    .lead {
+      max-width: 960px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 16px;
+    }
+
+    .hero-actions {
+      margin-top: 22px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--line);
+    }
+
+    .flow .cell {
+      padding: 24px;
+      border-right: 1px solid var(--line);
+      min-height: 128px;
+    }
+
+    .flow .cell:last-child { border-right: none; }
+
+    .step {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .flow p {
+      font-size: 14px;
+      color: var(--ink);
+      line-height: 1.6;
+      max-width: 36ch;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .card { padding: clamp(22px, 2.5vw, 32px); }
+
+    .card h2 {
+      text-transform: uppercase;
+      font-size: 28px;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+
+    .card p {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+      margin-bottom: 16px;
+      max-width: 70ch;
+    }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+
+    .tab {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: var(--ink);
+      color: var(--surface);
+      border-color: var(--ink);
+    }
+
+    .form { display: none; }
+    .form.active { display: block; }
+
+    .field {
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+      background: var(--surface);
+    }
+
+    .field label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 9px 12px 6px;
+      border-bottom: 1px solid var(--line-soft);
+      background: #fafafa;
+    }
+
+    .field input {
+      width: 100%;
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .btn {
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 11px 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+    }
+
+    .btn.ghost {
+      background: var(--surface);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+
+    .btn[disabled],
+    .btn.disabled {
+      opacity: 0.45;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+
+    .intake-lock {
+      margin-bottom: 12px;
+      border: 1px dashed var(--line);
+      background: #fbfbfb;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding: 11px;
+    }
+
+    .msg {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      background: #fbfbfb;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding: 11px;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .msg.active { display: block; }
+
+    .mono {
+      margin-top: 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-all;
+      min-height: 18px;
+    }
+
+    .quick-links {
+      margin-top: 14px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .flow .cell { border-right: none; border-top: 1px solid var(--line); min-height: auto; }
+      .flow .cell:first-child { border-top: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">AURA</div>
+      <div class="lang-toggle">
+        <button type="button" class="lang-btn" id="btnEs">ES</button>
+        <button type="button" class="lang-btn" id="btnEn">EN</button>
+      </div>
+    </div>
+
+    <section class="panel">
+      <div class="hero">
+        <div class="eyebrow" data-i18n="hero_eyebrow">AURA / SRE Incident Intake Platform</div>
+        <h1 data-i18n="hero_title">Welcome</h1>
+        <p class="lead" data-i18n="hero_lead">
+          AURA separates two experiences: private tenant dashboard and public customer intake form.
+          Log in with your tenant to manage reports, triage, Jira/Slack, and incident status.
+        </p>
+        <div class="hero-actions">
+          <button type="button" class="btn" id="heroLoginBtn" data-i18n="hero_login">Quick Login</button>
+          <button type="button" class="btn ghost" id="heroRegisterBtn" data-i18n="hero_register">Register Tenant</button>
+          <a class="btn ghost" href="/dashboard" data-i18n="hero_dashboard">Go to /dashboard</a>
+        </div>
+      </div>
+      <div class="flow">
+        <div class="cell">
+          <div class="step" data-i18n="step_1">Step 01</div>
+          <p data-i18n="step_1_desc">Log in or register your tenant from this page.</p>
+        </div>
+        <div class="cell">
+          <div class="step" data-i18n="step_2">Step 02</div>
+          <p data-i18n="step_2_desc">Open your dashboard at <code>/dashboard</code> with tenant isolation.</p>
+        </div>
+        <div class="cell">
+          <div class="step" data-i18n="step_3">Step 03</div>
+          <p data-i18n="step_3_desc">Share your unique intake URL so customers can report incidents.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel card">
+        <div class="eyebrow" data-i18n="access_eyebrow">Tenant Access</div>
+        <h2 data-i18n="access_title">Login / Register</h2>
+        <p data-i18n="access_desc">
+          If you already have an access key, sign in now. If you do not have a tenant yet,
+          register it first and then enter your dashboard.
+        </p>
+
+        <div class="tabs">
+          <button type="button" class="tab active" id="tabLogin" data-i18n="tab_login">Login</button>
+          <button type="button" class="tab" id="tabRegister" data-i18n="tab_register">Register</button>
+        </div>
+
+        <form id="loginForm" class="form active">
+          <div class="field">
+            <label for="loginTenant" data-i18n="label_tenant">Tenant ID</label>
+            <input id="loginTenant" data-i18n-ph="ph_tenant" placeholder="e.g. acme-corp" required />
+          </div>
+          <div class="field">
+            <label for="loginKey" data-i18n="label_key">Access Key</label>
+            <input id="loginKey" type="password" data-i18n-ph="ph_key" placeholder="********" required />
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn" id="loginBtn" data-i18n="btn_login">Enter Dashboard</button>
+            <a class="btn ghost" href="/dashboard" data-i18n="btn_dashboard">Go to /dashboard</a>
+          </div>
+        </form>
+
+        <form id="registerForm" class="form">
+          <div class="field">
+            <label for="registerTenant" data-i18n="label_new_tenant">New Tenant ID</label>
+            <input id="registerTenant" data-i18n-ph="ph_tenant" placeholder="e.g. acme-corp" required />
+          </div>
+          <div class="field">
+            <label for="registerName" data-i18n="label_org">Organization Name</label>
+            <input id="registerName" data-i18n-ph="ph_org" placeholder="e.g. Acme Corp" required />
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn" id="registerBtn" data-i18n="btn_register">Register Tenant</button>
+          </div>
+        </form>
+
+        <div class="msg" id="authMsg"></div>
+      </article>
+
+      <article class="panel card">
+        <div class="eyebrow" data-i18n="intake_eyebrow">Customer Intake URL</div>
+        <h2 data-i18n="intake_title">Public Form</h2>
+        <p data-i18n="intake_desc">
+          This is the URL you share with final customers. They can only submit incidents and get confirmation.
+          No dashboard access. It is enabled once tenant access is validated.
+        </p>
+        <div class="intake-lock" id="intakeLockNotice" data-i18n="intake_lock">
+          First sign in or register tenant. Then your unique intake link is enabled.
+        </div>
+        <div class="field">
+          <label for="tenantInput" data-i18n="label_tenant">Tenant ID</label>
+          <input id="tenantInput" data-i18n-ph="ph_tenant" placeholder="e.g. acme-corp" />
+        </div>
+        <div class="actions">
+          <a class="btn ghost" id="intakeLink" href="#" data-i18n="btn_open_form">Open Form</a>
+          <button class="btn" id="copyLinkBtn" type="button" data-i18n="btn_copy">Copy URL</button>
+        </div>
+        <div class="mono" id="intakePreview"></div>
+        <div class="quick-links">
+          <a class="btn ghost" href="/dashboard" data-i18n="quick_dashboard">Dashboard</a>
+          <a class="btn ghost" href="/" data-i18n="quick_refresh">Refresh Welcome</a>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const API = window.location.hostname === "localhost"
+      ? "http://localhost:8000"
+      : `${location.protocol}//${location.hostname}:8000`;
+
+    const I18N = {
+      es: {
+        hero_eyebrow: "AURA / Plataforma de Ingesta SRE",
+        hero_title: "Bienvenido",
+        hero_lead: "AURA separa dos experiencias: dashboard privado del tenant y formulario publico para clientes. Inicia sesion con tu tenant para gestionar reportes, triage, Jira/Slack y estado de incidentes.",
+        hero_login: "Inicio de sesion rapido",
+        hero_register: "Registrar tenant",
+        hero_dashboard: "Ir a /dashboard",
+        step_1: "Paso 01",
+        step_1_desc: "Inicia sesion o registra tu tenant desde esta pagina.",
+        step_2: "Paso 02",
+        step_2_desc: "Entra a tu dashboard en /dashboard con aislamiento por tenant.",
+        step_3: "Paso 03",
+        step_3_desc: "Comparte tu URL unica de intake para que tus clientes reporten incidentes.",
+        access_eyebrow: "Acceso Tenant",
+        access_title: "Login / Registro",
+        access_desc: "Si ya tienes access key, inicia sesion ahora. Si aun no tienes tenant, registralo primero y luego entra al dashboard.",
+        tab_login: "Login",
+        tab_register: "Registro",
+        label_tenant: "Tenant ID",
+        label_key: "Access Key",
+        label_new_tenant: "Nuevo Tenant ID",
+        label_org: "Nombre de Organizacion",
+        btn_login: "Entrar al Dashboard",
+        btn_dashboard: "Ir a /dashboard",
+        btn_register: "Registrar Tenant",
+        intake_eyebrow: "URL de Intake Cliente",
+        intake_title: "Formulario Publico",
+        intake_desc: "Esta URL se comparte con clientes finales. Solo pueden reportar incidentes y recibir confirmacion. Sin acceso al dashboard. Se habilita al validar acceso tenant.",
+        intake_lock: "Primero inicia sesion o registra tenant. Luego se habilita el enlace unico de intake.",
+        btn_open_form: "Abrir Formulario",
+        btn_copy: "Copiar URL",
+        quick_dashboard: "Dashboard",
+        quick_refresh: "Refrescar Welcome",
+        ph_tenant: "ej: acme-corp",
+        ph_key: "********",
+        ph_org: "ej: Acme Corp",
+        msg_login_required: "Completa tenant y access key.",
+        msg_register_required: "Completa tenant y nombre de organizacion.",
+        msg_invalid_credentials: "Credenciales invalidas para este tenant.",
+        msg_copy_ok: "URL copiada.",
+        msg_copy_fail: "No se pudo copiar automaticamente. Copia manualmente.",
+        msg_validate_first: "Primero valida tenant con login/registro.",
+        msg_lock_preview: "Intake bloqueado hasta validar tenant.",
+        msg_empty_preview: "Ingresa tenant para generar URL.",
+        msg_register_ok: "Tenant registrado.\nAhora inicia sesion con tu access key (definida por el administrador del sistema).",
+        msg_register_fail: "No se pudo registrar tenant.",
+        msg_saved_session: "Sesion detectada para tenant '{tenant}'. Puedes entrar directo a /dashboard.",
+        loading_login: "Validando...",
+        loading_register: "Registrando..."
+      },
+      en: {
+        hero_eyebrow: "AURA / SRE Incident Intake Platform",
+        hero_title: "Welcome",
+        hero_lead: "AURA separates two experiences: private tenant dashboard and public customer intake form. Sign in with your tenant to manage reports, triage, Jira/Slack, and incident status.",
+        hero_login: "Quick Login",
+        hero_register: "Register Tenant",
+        hero_dashboard: "Go to /dashboard",
+        step_1: "Step 01",
+        step_1_desc: "Sign in or register your tenant from this page.",
+        step_2: "Step 02",
+        step_2_desc: "Open your dashboard at /dashboard with tenant isolation.",
+        step_3: "Step 03",
+        step_3_desc: "Share your unique intake URL so customers can report incidents.",
+        access_eyebrow: "Tenant Access",
+        access_title: "Login / Register",
+        access_desc: "If you already have an access key, sign in now. If you do not have a tenant yet, register it first and then enter your dashboard.",
+        tab_login: "Login",
+        tab_register: "Register",
+        label_tenant: "Tenant ID",
+        label_key: "Access Key",
+        label_new_tenant: "New Tenant ID",
+        label_org: "Organization Name",
+        btn_login: "Enter Dashboard",
+        btn_dashboard: "Go to /dashboard",
+        btn_register: "Register Tenant",
+        intake_eyebrow: "Customer Intake URL",
+        intake_title: "Public Form",
+        intake_desc: "This is the URL you share with final customers. They can only submit incidents and get confirmation. No dashboard access. It is enabled once tenant access is validated.",
+        intake_lock: "First sign in or register tenant. Then your unique intake link is enabled.",
+        btn_open_form: "Open Form",
+        btn_copy: "Copy URL",
+        quick_dashboard: "Dashboard",
+        quick_refresh: "Refresh Welcome",
+        ph_tenant: "e.g. acme-corp",
+        ph_key: "********",
+        ph_org: "e.g. Acme Corp",
+        msg_login_required: "Complete tenant and access key.",
+        msg_register_required: "Complete tenant and organization name.",
+        msg_invalid_credentials: "Invalid credentials for this tenant.",
+        msg_copy_ok: "URL copied.",
+        msg_copy_fail: "Could not copy automatically. Please copy manually.",
+        msg_validate_first: "Validate tenant first using login/register.",
+        msg_lock_preview: "Intake is locked until tenant is validated.",
+        msg_empty_preview: "Enter tenant to generate URL.",
+        msg_register_ok: "Tenant registered.\nNow sign in with your access key (provided by your system administrator).",
+        msg_register_fail: "Could not register tenant.",
+        msg_saved_session: "Session detected for tenant '{tenant}'. You can go directly to /dashboard.",
+        loading_login: "Validating...",
+        loading_register: "Registering..."
+      }
+    };
+
+    let lang = localStorage.getItem("aura_lang") || "es";
+
+    function t(key) {
+      return (I18N[lang] && I18N[lang][key]) || (I18N.es && I18N.es[key]) || key;
+    }
+
+    function applyI18n() {
+      document.documentElement.lang = lang;
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        const key = el.dataset.i18n;
+        const value = t(key);
+        if (value) el.textContent = value;
+      });
+      document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+        const key = el.dataset.i18nPh;
+        const value = t(key);
+        if (value) el.placeholder = value;
+      });
+
+      document.getElementById("btnEs").classList.toggle("active", lang === "es");
+      document.getElementById("btnEn").classList.toggle("active", lang === "en");
+
+      updateIntake();
+    }
+
+    document.getElementById("btnEs").addEventListener("click", () => {
+      lang = "es";
+      localStorage.setItem("aura_lang", lang);
+      applyI18n();
+    });
+
+    document.getElementById("btnEn").addEventListener("click", () => {
+      lang = "en";
+      localStorage.setItem("aura_lang", lang);
+      applyI18n();
+    });
+
+    function setAuthMessage(text) {
+      const msg = document.getElementById("authMsg");
+      msg.textContent = text;
+      msg.classList.add("active");
+    }
+
+    function setTab(tab) {
+      const loginTab = document.getElementById("tabLogin");
+      const registerTab = document.getElementById("tabRegister");
+      const loginForm = document.getElementById("loginForm");
+      const registerForm = document.getElementById("registerForm");
+      const onLogin = tab === "login";
+      loginTab.classList.toggle("active", onLogin);
+      registerTab.classList.toggle("active", !onLogin);
+      loginForm.classList.toggle("active", onLogin);
+      registerForm.classList.toggle("active", !onLogin);
+    }
+
+    document.getElementById("tabLogin").addEventListener("click", () => setTab("login"));
+    document.getElementById("tabRegister").addEventListener("click", () => setTab("register"));
+
+    document.getElementById("heroLoginBtn").addEventListener("click", () => {
+      setTab("login");
+      document.getElementById("loginTenant").focus();
+      document.getElementById("loginForm").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    document.getElementById("heroRegisterBtn").addEventListener("click", () => {
+      setTab("register");
+      document.getElementById("registerTenant").focus();
+      document.getElementById("registerForm").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    function publicBase() {
+      return window.location.origin;
+    }
+
+    const tenantInputEl = document.getElementById("tenantInput");
+    const intakeLinkEl = document.getElementById("intakeLink");
+    const intakePreviewEl = document.getElementById("intakePreview");
+    const copyLinkBtnEl = document.getElementById("copyLinkBtn");
+    const intakeLockNoticeEl = document.getElementById("intakeLockNotice");
+    let intakeEnabled = false;
+
+    function setIntakeEnabled(enabled) {
+      intakeEnabled = enabled;
+      tenantInputEl.disabled = !enabled;
+      copyLinkBtnEl.disabled = !enabled;
+      intakeLinkEl.classList.toggle("disabled", !enabled);
+      intakeLockNoticeEl.style.display = enabled ? "none" : "block";
+
+      if (!enabled) {
+        intakeLinkEl.href = "#";
+        intakePreviewEl.textContent = t("msg_lock_preview");
+      }
+    }
+
+    function updateIntake() {
+      if (!intakeEnabled) {
+        return;
+      }
+
+      const tenant = (tenantInputEl.value || "").trim();
+      if (!tenant) {
+        intakeLinkEl.href = "#";
+        intakePreviewEl.textContent = t("msg_empty_preview");
+        return;
+      }
+
+      const url = `${publicBase()}/intake/${encodeURIComponent(tenant)}`;
+      intakeLinkEl.href = url;
+      intakePreviewEl.textContent = url;
+    }
+
+    tenantInputEl.addEventListener("input", updateIntake);
+
+    copyLinkBtnEl.addEventListener("click", async () => {
+      if (!intakeEnabled) {
+        setAuthMessage(t("msg_validate_first"));
+        return;
+      }
+
+      const value = intakePreviewEl.textContent || "";
+      try {
+        await navigator.clipboard.writeText(value);
+        setAuthMessage(t("msg_copy_ok"));
+      } catch (_) {
+        setAuthMessage(t("msg_copy_fail"));
+      }
+    });
+
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("loginBtn");
+      const tenant = document.getElementById("loginTenant").value.trim();
+      const key = document.getElementById("loginKey").value.trim();
+
+      if (!tenant || !key) {
+        setAuthMessage(t("msg_login_required"));
+        return;
+      }
+
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = t("loading_login");
+
+      try {
+        const res = await fetch(`${API}/api/auth/verify`, {
+          method: "POST",
+          headers: {
+            "x-tenant-id": tenant,
+            "x-tenant-admin-key": key
+          }
+        });
+
+        if (!res.ok) {
+          throw new Error(t("msg_invalid_credentials"));
+        }
+
+        localStorage.setItem("aura_admin_tenant", tenant);
+        localStorage.setItem("aura_admin_key", key);
+        window.location.assign("/dashboard");
+      } catch (err) {
+        setAuthMessage(String(err.message || err));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
+
+    document.getElementById("registerForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("registerBtn");
+      const tenant = document.getElementById("registerTenant").value.trim();
+      const name = document.getElementById("registerName").value.trim();
+
+      if (!tenant || !name) {
+        setAuthMessage(t("msg_register_required"));
+        return;
+      }
+
+      const prev = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = t("loading_register");
+
+      try {
+        const res = await fetch(`${API}/api/tenants/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tenant_id: tenant, name })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || t("msg_register_fail"));
+        }
+
+        document.getElementById("loginTenant").value = tenant;
+        tenantInputEl.value = tenant;
+        setIntakeEnabled(true);
+        updateIntake();
+        setTab("login");
+        setAuthMessage(t("msg_register_ok"));
+      } catch (err) {
+        setAuthMessage(String(err.message || err));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
+
+    const savedTenant = localStorage.getItem("aura_admin_tenant");
+    const savedKey = localStorage.getItem("aura_admin_key");
+
+    if (savedTenant && savedKey) {
+      document.getElementById("loginTenant").value = savedTenant;
+      tenantInputEl.value = savedTenant;
+      setIntakeEnabled(true);
+      setAuthMessage(t("msg_saved_session").replace("{tenant}", savedTenant));
+    } else {
+      setIntakeEnabled(false);
+    }
+
+    applyI18n();
+  </script>
+</body>
+</html>

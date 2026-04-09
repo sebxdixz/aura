@@ -6,3 +6,4 @@ psycopg2-binary==2.9.9
 sqlalchemy==2.0.35
 openai==1.102.0
 pypdf==5.4.0
+cryptography==46.0.3

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AURA · Intake</title>
+  <title>AURA | Intake</title>
   <meta name="description" content="Public incident intake portal for e-commerce users." />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <style>
@@ -22,174 +22,353 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: var(--font-sans); background: var(--g100); color: var(--black); min-height: 100vh;
-      background-image: radial-gradient(circle, var(--g300) 1px, transparent 1px); background-size: 22px 22px;
+      font-family: var(--font-sans);
+      background: var(--g100);
+      color: var(--black);
+      min-height: 100vh;
+      background-image: radial-gradient(circle, var(--g300) 1px, transparent 1px);
+      background-size: 22px 22px;
     }
 
-    .wrap { max-width: 800px; margin: 0 auto; padding: 28px 16px 40px; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 28px 16px 40px; }
 
     .topbar {
-      border: 1px solid var(--g200); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(8px);
-      display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; margin-bottom: 24px;
+      border: 1px solid var(--g200);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      gap: 12px;
     }
-    .brand { font-size: 24px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; }
-    .chip { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; border: 1px solid var(--g200); padding: 6px 10px; color: var(--g700); background: var(--white); }
 
-    .hero { border: 1px solid var(--g200); background: var(--white); padding: 24px; margin-bottom: 24px; }
-    .overline { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--g500); margin-bottom: 8px; }
-    h1 { font-size: 38px; line-height: 1; letter-spacing: -1.5px; text-transform: uppercase; margin-bottom: 12px; }
-    .hero p { color: var(--g700); font-size: 14px; line-height: 1.5; max-width: 600px; }
+    .brand {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      text-transform: uppercase;
+    }
 
-    form { border: 1px solid var(--g200); background: var(--white); margin-bottom: 24px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; }
-    .field { border-right: 1px solid var(--g200); border-bottom: 1px solid var(--g200); }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      border: 1px solid var(--g200);
+      padding: 6px 10px;
+      color: var(--g700);
+      background: var(--white);
+      white-space: nowrap;
+    }
+
+    .lang-toggle {
+      display: inline-flex;
+      border: 1px solid var(--g200);
+      background: var(--white);
+    }
+
+    .lang-btn {
+      border: none;
+      background: transparent;
+      padding: 7px 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      color: var(--g500);
+    }
+
+    .lang-btn.active {
+      background: var(--black);
+      color: var(--white);
+    }
+
+    .hero {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .overline {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--g500);
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 38px;
+      line-height: 1;
+      letter-spacing: -1.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      color: var(--g700);
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 640px;
+    }
+
+    form {
+      border: 1px solid var(--g200);
+      background: var(--white);
+      margin-bottom: 24px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .field {
+      border-right: 1px solid var(--g200);
+      border-bottom: 1px solid var(--g200);
+    }
+
     .row .field:last-child { border-right: none; }
-    .field-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--g500); background: var(--g50); border-bottom: 1px solid var(--g150); padding: 10px 14px 6px; }
-    .field input, .field textarea, .field select { width: 100%; border: none; outline: none; padding: 14px; font-size: 13px; font-family: var(--font-mono); color: var(--black); background: transparent; }
-    .field textarea { min-height: 120px; resize: vertical; }
-    .field.full { grid-column: 1 / -1; border-right: none; }
 
-    .actions { border-top: 1px solid var(--g200); background: var(--g50); padding: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    button { border: none; background: var(--black); color: var(--white); font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; padding: 0 20px; height: 44px; cursor: pointer; transition: 0.1s; display: inline-flex; align-items: center; gap: 8px; }
+    .field-label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--g500);
+      background: var(--g50);
+      border-bottom: 1px solid var(--g150);
+      padding: 10px 14px 6px;
+    }
+
+    .field input,
+    .field textarea,
+    .field select {
+      width: 100%;
+      border: none;
+      outline: none;
+      padding: 14px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      color: var(--black);
+      background: transparent;
+    }
+
+    .field textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+      border-right: none;
+    }
+
+    .actions {
+      border-top: 1px solid var(--g200);
+      background: var(--g50);
+      padding: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      background: var(--black);
+      color: var(--white);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      padding: 0 20px;
+      height: 44px;
+      cursor: pointer;
+      transition: 0.1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     button:hover { background: var(--g700); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* Terminal output area */
-    .out-container { display: none; margin-bottom: 24px; border: 1px solid var(--g200); background: var(--white); box-shadow: 0 8px 32px rgba(0,0,0,0.05); }
-    .out-container.visible { display: block; animation: slideUp 0.3s ease forwards; }
-    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .helper {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--g500);
+    }
 
-    .out-head { border-bottom: 1px solid var(--g200); background: var(--black); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; color: var(--white); }
-    .out-title { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
-    .badge { border: 1px solid var(--g500); padding: 4px 8px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; }
+    .out-container {
+      display: none;
+      margin-bottom: 24px;
+      border: 1px solid var(--g200);
+      background: var(--white);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.05);
+    }
 
-    /* Fake Terminal */
-    .terminal { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--g700); background: var(--g50); padding: 24px; max-height: 300px; overflow-y: auto; display: none; }
-    .terminal.active { display: block; }
-    .term-line { opacity: 0; animation: fadeIn 0.2s forwards; }
-    .term-sys { color: #000; font-weight: 700; }
-    .term-ai { color: #0044ff; font-weight: 700; }
-    .term-ok { color: #009944; }
+    .out-container.visible { display: block; }
 
-    @keyframes fadeIn { to { opacity: 1; } }
-    @keyframes blink { 50% { opacity: 0; } }
-    .cursor { display: inline-block; width: 6px; height: 12px; background: var(--black); animation: blink 0.8s step-end infinite; vertical-align: middle; margin-left: 4px; }
+    .out-head {
+      border-bottom: 1px solid var(--g200);
+      background: var(--black);
+      padding: 12px 16px;
+      color: var(--white);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
 
-    /* Visual Result Block */
-    .result-block { display: none; padding: 0; }
-    .result-block.active { display: block; }
-    
-    .res-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--g150); }
-    .res-row:last-child { border-bottom: none; }
-    .res-cell { padding: 20px; border-right: 1px solid var(--g150); }
-    .res-cell:last-child { border-right: none; }
-    .res-cell.full { grid-column: 1 / -1; border-right: none; }
-    
-    .res-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--g500); margin-bottom: 8px; }
-    .res-val { font-size: 14px; color: var(--black); line-height: 1.5; }
-    
-    .code-block { font-family: var(--font-mono); font-size: 12px; color: var(--white); background: var(--black); padding: 16px; margin-top: 8px; overflow-x: auto; white-space: pre-wrap; }
-    .code-block::before { content: "$ "; color: var(--g400); }
+    .out-body {
+      padding: 14px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #8d0000;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
 
-    .sev-badge { display: inline-block; padding: 4px 10px; border: 1px solid var(--black); font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 16px; }
+    #toasts {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 2000;
+      pointer-events: none;
+    }
 
-    #toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 2000; pointer-events: none; }
-    .toast { background: var(--black); color: var(--white); border: 1px solid var(--black); padding: 10px 16px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 1px; }
-    .toast.err { background: var(--white); color: var(--black); border-color: var(--black); }
+    .toast {
+      background: var(--black);
+      color: var(--white);
+      border: 1px solid var(--black);
+      padding: 10px 16px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
 
-    .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: var(--white); border-radius: 50%; animation: spin 0.6s linear infinite; }
+    .toast.err {
+      background: var(--white);
+      color: var(--black);
+      border-color: var(--black);
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: var(--white);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    @media (max-width: 760px) { .row, .res-row { grid-template-columns: 1fr; } .field, .res-cell { border-right: none; } }
+    @media (max-width: 760px) {
+      .row { grid-template-columns: 1fr; }
+      .field { border-right: none; }
+      .topbar { flex-wrap: wrap; }
+      .topbar-right { width: 100%; justify-content: space-between; }
+      .chip { flex: 1; text-align: center; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="topbar">
       <div class="brand">AURA</div>
-      <div class="chip">Public Intake Portal</div>
+      <div class="topbar-right">
+        <div class="chip" data-i18n="chip_portal">Public Intake Portal</div>
+        <div class="lang-toggle">
+          <button type="button" class="lang-btn" id="btnEs">ES</button>
+          <button type="button" class="lang-btn" id="btnEn">EN</button>
+        </div>
+      </div>
     </div>
 
     <section class="hero">
-      <div class="overline">Intelligent Triage Pipeline</div>
-      <h1>Report Issue</h1>
-      <p>
-        Describe the problem below. Our AI Agent will analyze your request, extract technical context, and propose an immediate fix to our engineering team.
+      <div class="overline" data-i18n="hero_overline">Intelligent Triage Pipeline</div>
+      <h1 data-i18n="hero_title">Report Issue</h1>
+      <p data-i18n="hero_desc">
+        Describe the problem below. Our AI agent will analyze your request, extract technical context,
+        and send it to the engineering team.
+      </p>
+    </section>
+
+    <section class="hero" id="thanksView" style="display:none;">
+      <div class="overline" data-i18n="thanks_overline">Thank you</div>
+      <h1 data-i18n="thanks_title">Report Received</h1>
+      <p data-i18n="thanks_desc">
+        Thanks for helping us improve. Your report was submitted successfully.
+        We are already working on it.
       </p>
     </section>
 
     <form id="incidentForm">
       <div class="row">
         <div class="field">
-          <div class="field-label">Reporter Name</div>
-          <input id="reporter_name" placeholder="John Doe" required />
+          <div class="field-label" data-i18n="label_name">Reporter Name</div>
+          <input id="reporter_name" data-i18n-ph="ph_name" placeholder="John Doe" required />
         </div>
         <div class="field">
-          <div class="field-label">Reporter Email</div>
-          <input id="reporter_email" type="email" placeholder="john@example.com" required />
+          <div class="field-label" data-i18n="label_email">Reporter Email</div>
+          <input id="reporter_email" type="email" data-i18n-ph="ph_email" placeholder="john@example.com" required />
         </div>
       </div>
+
       <div class="field full">
-        <div class="field-label">Issue Category</div>
+        <div class="field-label" data-i18n="label_category">Issue Category</div>
         <select id="issue_type" required>
-          <option value="" selected disabled>Select the affected capability...</option>
-          <option value="checkout">Checkout / Gateway</option>
-          <option value="login">Authentication (Auth0/OAuth)</option>
-          <option value="database">Database / Latency</option>
-          <option value="integration">Third-party API Integration</option>
-          <option value="other">Other System Anomaly</option>
+          <option value="" selected disabled data-i18n="opt_select">Select the affected capability...</option>
+          <option value="checkout" data-i18n="opt_checkout">Checkout / Gateway</option>
+          <option value="login" data-i18n="opt_login">Authentication (Auth0/OAuth)</option>
+          <option value="database" data-i18n="opt_database">Database / Latency</option>
+          <option value="integration" data-i18n="opt_integration">Third-party API Integration</option>
+          <option value="other" data-i18n="opt_other">Other System Anomaly</option>
         </select>
       </div>
+
       <div class="field full">
-        <div class="field-label">Technical Description & Logs</div>
-        <textarea id="description" placeholder="Paste error traces, stack dumps, or behavioral anomalies here. Be as detailed as possible..." required></textarea>
+        <div class="field-label" data-i18n="label_desc">Technical Description and Logs</div>
+        <textarea id="description" data-i18n-ph="ph_desc" placeholder="Paste error traces here..." required></textarea>
       </div>
+
+      <div class="field full">
+        <div class="field-label" data-i18n="label_attachment">Attachment (Optional)</div>
+        <input
+          id="attachment"
+          type="file"
+          accept=".png,.jpg,.jpeg,.txt,.log,.json,.csv,.pdf,.wav,.mp3,.m4a,.webm,.ogg"
+        />
+      </div>
+
       <div class="actions">
-        <button type="submit" id="submitBtn">Deploy Agent</button>
-        <span style="font-family:var(--font-mono); font-size:10px; color:var(--g500);">OpenRouter Two-Stage execution active.</span>
+        <button type="submit" id="submitBtn" data-i18n="btn_submit">Deploy Agent</button>
+        <span class="helper" data-i18n="helper_model">OpenRouter two-stage execution active.</span>
       </div>
     </form>
 
-    <!-- Visual output area -->
     <section class="out-container" id="outWrap">
-      <div class="out-head">
-        <span class="out-title">AURA Execution Trace</span>
-        <span class="badge" id="outStatus" style="border-color:var(--g500); color:var(--g300);">Running</span>
-      </div>
-
-      <!-- Fake Terminal -->
-      <div class="terminal" id="terminal">
-        <div id="termLines"></div>
-        <div class="cursor"></div>
-      </div>
-
-      <!-- Triage Results visual -->
-      <div class="result-block" id="resultBlock">
-        <div class="res-cell full" style="border-bottom:1px solid var(--g150); background:var(--g50);">
-          <div class="res-label">AURA Conclusion</div>
-          <div class="sev-badge" id="resSev">High</div>
-          <div class="res-val" id="resSum" style="font-family:var(--font-mono); font-size:12px;"></div>
-        </div>
-        <div class="res-row">
-          <div class="res-cell">
-            <div class="res-label">OpenRouter RCA</div>
-            <div class="res-val" id="resRCA"></div>
-          </div>
-          <div class="res-cell">
-            <div class="res-label">Operational Strategy</div>
-            <div class="res-val" id="resFix"></div>
-          </div>
-        </div>
-        <div class="res-cell full">
-          <div class="res-label">Recommended Auto-Fix (Code/CLI)</div>
-          <div class="code-block" id="resCode"></div>
-        </div>
-        <div class="res-cell full" style="background:var(--g50);">
-          <div class="res-label">ReAct Integrations Fired</div>
-          <div class="res-val" id="resIntegrations" style="font-family:var(--font-mono); font-size:11px; color:var(--g700);"></div>
-        </div>
-      </div>
+      <div class="out-head" data-i18n="error_head">Submission Error</div>
+      <div class="out-body" id="outBody"></div>
     </section>
   </div>
 
@@ -200,138 +379,129 @@
       ? "http://localhost:8000"
       : `${location.protocol}//${location.hostname}:8000`;
 
-    // Try to grab tenant from pathogen (/intake/TENANT_ID) or querystring
+    const I18N = {
+      es: {
+        chip_portal: "Portal Publico de Reportes",
+        hero_overline: "Pipeline de Triage Inteligente",
+        hero_title: "Reportar Incidente",
+        hero_desc: "Describe el problema abajo. Nuestro agente de IA analizara tu reporte, extraera contexto tecnico y lo enviara al equipo de ingenieria.",
+        thanks_overline: "Gracias",
+        thanks_title: "Reporte Recibido",
+        thanks_desc: "Gracias por ayudarnos a mejorar. Tu reporte se envio correctamente. Ya estamos trabajando en ello.",
+        label_name: "Nombre de Quien Reporta",
+        label_email: "Correo de Quien Reporta",
+        label_category: "Categoria del Incidente",
+        label_desc: "Descripcion Tecnica y Logs",
+        label_attachment: "Adjunto (Opcional)",
+        opt_select: "Selecciona la capacidad afectada...",
+        opt_checkout: "Checkout / Pasarela",
+        opt_login: "Autenticacion (Auth0/OAuth)",
+        opt_database: "Base de Datos / Latencia",
+        opt_integration: "Integracion API de Terceros",
+        opt_other: "Otra Anomalia del Sistema",
+        ph_name: "Juan Perez",
+        ph_email: "juan@ejemplo.com",
+        ph_desc: "Pega trazas, logs o comportamiento observado. Mientras mas detalle, mejor.",
+        btn_submit: "Enviar Reporte",
+        btn_analyzing: "Analizando",
+        helper_model: "Ejecucion OpenRouter en dos etapas activa.",
+        error_head: "Error de Envio",
+        err_runtime: "Fallo de ejecucion.",
+        err_prefix: "Error",
+        toast_failed: "Envio fallido",
+        chip_confirmed: "Envio Confirmado"
+      },
+      en: {
+        chip_portal: "Public Intake Portal",
+        hero_overline: "Intelligent Triage Pipeline",
+        hero_title: "Report Issue",
+        hero_desc: "Describe the problem below. Our AI agent will analyze your report, extract technical context, and route it to the engineering team.",
+        thanks_overline: "Thank you",
+        thanks_title: "Report Received",
+        thanks_desc: "Thanks for helping us improve. Your report was submitted successfully. We are already working on it.",
+        label_name: "Reporter Name",
+        label_email: "Reporter Email",
+        label_category: "Issue Category",
+        label_desc: "Technical Description and Logs",
+        label_attachment: "Attachment (Optional)",
+        opt_select: "Select the affected capability...",
+        opt_checkout: "Checkout / Gateway",
+        opt_login: "Authentication (Auth0/OAuth)",
+        opt_database: "Database / Latency",
+        opt_integration: "Third-party API Integration",
+        opt_other: "Other System Anomaly",
+        ph_name: "John Doe",
+        ph_email: "john@example.com",
+        ph_desc: "Paste traces, logs, or observed behavior. More detail gives better triage.",
+        btn_submit: "Submit Report",
+        btn_analyzing: "Analyzing",
+        helper_model: "OpenRouter two-stage execution active.",
+        error_head: "Submission Error",
+        err_runtime: "Runtime failure.",
+        err_prefix: "Error",
+        toast_failed: "Submission failed",
+        chip_confirmed: "Submission Confirmed"
+      }
+    };
+
+    let lang = localStorage.getItem("aura_lang") || "es";
+
+    function t(key) {
+      return (I18N[lang] && I18N[lang][key]) || (I18N.es && I18N.es[key]) || key;
+    }
+
+    function applyI18n() {
+      document.documentElement.lang = lang;
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        const key = el.dataset.i18n;
+        const value = t(key);
+        if (value) el.textContent = value;
+      });
+      document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+        const key = el.dataset.i18nPh;
+        const value = t(key);
+        if (value) el.placeholder = value;
+      });
+
+      document.getElementById("btnEs").classList.toggle("active", lang === "es");
+      document.getElementById("btnEn").classList.toggle("active", lang === "en");
+    }
+
+    document.getElementById("btnEs").addEventListener("click", () => {
+      lang = "es";
+      localStorage.setItem("aura_lang", lang);
+      applyI18n();
+    });
+
+    document.getElementById("btnEn").addEventListener("click", () => {
+      lang = "en";
+      localStorage.setItem("aura_lang", lang);
+      applyI18n();
+    });
+
     const pathMatch = window.location.pathname.match(/^\/intake\/([A-Za-z0-9._-]+)\/?$/);
     const tenantId = (pathMatch && pathMatch[1]) || new URLSearchParams(window.location.search).get("tenant_id") || "hackathon-demo";
+    const onThanksPage = /^\/thanks\/?$/.test(window.location.pathname);
 
     const submitBtn = document.getElementById("submitBtn");
     const outWrap = document.getElementById("outWrap");
-    const outStatus = document.getElementById("outStatus");
-    const terminal = document.getElementById("terminal");
-    const termLines = document.getElementById("termLines");
-    const resultBlock = document.getElementById("resultBlock");
+    const outBody = document.getElementById("outBody");
 
-    // Animation sequences for Hackathon dazzle
-    const termDelays = [
-      { t: 0, msg: "<span class='term-sys'>[SYS]</span> Initiating payload serialization..." },
-      { t: 400, msg: "<span class='term-sys'>[API]</span> Pushing context to Ingestor Agent." },
-      { t: 1200, msg: "<span class='term-ai'>[AURA-I]</span> Validating structure (Pydantic schema lock)." },
-      { t: 2500, msg: "<span class='term-ai'>[AURA-II]</span> Connecting to OpenRouter (multimodal_two_stage)." },
-      { t: 3800, msg: "<span class='term-ai'>[AURA-II]</span> SRE Analysis model synthesizing root-cause..." },
-      { t: 5500, msg: "<span class='term-sys'>[MCP]</span> Orchestrator evaluating ReAct tools." },
-      { t: 7000, msg: "<span class='term-sys'>[MCP]</span> Dispatching HTTP Bridge -> Stdio -> atlassian/jira." },
-      { t: 8000, msg: "<span class='term-sys'>[MCP]</span> Dispatching HTTP Bridge -> Stdio -> slack." }
-    ];
-
-    let termTimeouts = [];
-
-    document.getElementById("incidentForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      
-      // Reset UI state
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<div class="spinner"></div> ANALYZING';
-      outWrap.classList.add("visible");
-      outStatus.textContent =("PROCESSING");
-      outStatus.style.borderColor = "var(--white)";
-      outStatus.style.color = "var(--white)";
-      
-      terminal.classList.add("active");
-      resultBlock.classList.remove("active");
-      termLines.innerHTML = "";
-      
-      termTimeouts.forEach(clearTimeout);
-      termTimeouts = [];
-
-      // Start fake terminal animation while fetch runs
-      termDelays.forEach(step => {
-        const to = setTimeout(() => {
-          const div = document.createElement("div");
-          div.className = "term-line";
-          div.innerHTML = step.msg;
-          termLines.appendChild(div);
-          terminal.scrollTop = terminal.scrollHeight;
-        }, step.t);
-        termTimeouts.push(to);
-      });
-
-      const reporterName = document.getElementById("reporter_name").value.trim();
-      const reporterEmail = document.getElementById("reporter_email").value.trim();
-      const issueType = document.getElementById("issue_type").value;
-      const description = document.getElementById("description").value.trim();
-
-      const fd = new FormData();
-      fd.append("tenant_id", tenantId);
-      fd.append("reporter_email", reporterEmail);
-      fd.append("description", `[${issueType.toUpperCase()}] ${description} (Reporter: ${reporterName})`);
-
-      try {
-        const response = await fetch(`${API}/api/incidents/submit`, { method: "POST", body: fd });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "Runtime failure.");
-        
-        // Wait at least the min animation time for visual polish
-        const elapsed = termTimeouts.length ? 3000 : 0; 
-        
-        renderResults(data);
-
-      } catch (error) {
-        termTimeouts.forEach(clearTimeout);
-        const errDiv = document.createElement("div");
-        errDiv.className = "term-line";
-        errDiv.style.color = "red";
-        errDiv.innerHTML = `[ERR] Pipeline failed: ${error.message}`;
-        termLines.appendChild(errDiv);
-        outStatus.textContent = "FAILED";
-        outStatus.style.borderColor = "red";
-        outStatus.style.color = "red";
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Deploy Agent";
+    function setThanksMode() {
+      document.getElementById("incidentForm").style.display = "none";
+      document.getElementById("thanksView").style.display = "block";
+      const topChip = document.querySelector(".chip");
+      if (topChip) {
+        topChip.textContent = t("chip_confirmed");
       }
-    });
+    }
 
-    function renderResults(data) {
-      // Clear timeouts to ensure clean transition
-      termTimeouts.forEach(clearTimeout);
-
-      // Hide terminal, show result block
-      terminal.classList.remove("active");
-      resultBlock.classList.add("active");
-      outStatus.textContent = "COMPLETED";
-      outStatus.style.borderColor = "#00ff66";
-      outStatus.style.color = "#00ff66";
-
-      const tr = data.triage || {};
-      const sev = tr.severity || "low";
-      const rca = tr.root_cause_analysis || "No RCA generated.";
-      const fix = tr.proposed_fix || "No fix recommended.";
-      const cmd = tr.proposed_cli_command || "echo 'No CLI action needed.'";
-      const sum = tr.technical_summary || data.description;
-      const tkt = data.ticket || {};
-
-      document.getElementById("resSev").textContent = sev.toUpperCase() + (tr.severity_score ? ` (${tr.severity_score})` : '');
-      document.getElementById("resSev").style.borderColor = sev === 'high' || sev === 'critical' ? 'var(--black)' : 'var(--g300)';
-      
-      document.getElementById("resSum").textContent = sum;
-      document.getElementById("resRCA").textContent = rca;
-      document.getElementById("resFix").textContent = fix;
-      document.getElementById("resCode").textContent = cmd;
-
-      let integrStr = "";
-      if (tkt.ticket_id) {
-         integrStr += `✓ Jira Ticket Created: ${tkt.ticket_id} via ${tkt.provider}\n`;
-      }
-      if (data.notifications && data.notifications.length > 0) {
-         integrStr += `✓ Slack Notified: ${data.notifications[0].detail}\n`;
-      }
-      integrStr += `✓ LLM Engine: ${tr.llm_mode || 'default'}`;
-      document.getElementById("resIntegrations").innerText = integrStr;
-
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Deploy New Agent";
-      
-      // Auto-scroll to results
-      outWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    function redirectToThanks(incidentId) {
+      const qs = new URLSearchParams({
+        tenant: tenantId,
+        incident: incidentId || ""
+      }).toString();
+      window.location.assign(`/thanks?${qs}`);
     }
 
     function toast(message, isError = false) {
@@ -341,6 +511,51 @@
       document.getElementById("toasts").appendChild(el);
       setTimeout(() => el.remove(), 3200);
     }
+
+    if (onThanksPage) {
+      setThanksMode();
+    }
+
+    document.getElementById("incidentForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      outWrap.classList.remove("visible");
+      outBody.textContent = "";
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<div class="spinner"></div> ${t("btn_analyzing")}`;
+
+      const reporterName = document.getElementById("reporter_name").value.trim();
+      const reporterEmail = document.getElementById("reporter_email").value.trim();
+      const issueType = document.getElementById("issue_type").value;
+      const description = document.getElementById("description").value.trim();
+      const fileInput = document.getElementById("attachment");
+      const attachmentFile = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+      const fd = new FormData();
+      fd.append("tenant_id", tenantId);
+      fd.append("reporter_email", reporterEmail);
+      fd.append("description", `[${issueType.toUpperCase()}] ${description} (Reporter: ${reporterName})`);
+      if (attachmentFile) {
+        fd.append("attachment", attachmentFile);
+      }
+
+      try {
+        const response = await fetch(`${API}/api/incidents/submit`, { method: "POST", body: fd });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || t("err_runtime"));
+        }
+        redirectToThanks(data.incident_id);
+      } catch (error) {
+        outWrap.classList.add("visible");
+        outBody.textContent = `${t("err_prefix")}: ${String(error.message || error)}`;
+        toast(t("toast_failed"), true);
+        submitBtn.disabled = false;
+        submitBtn.textContent = t("btn_submit");
+      }
+    });
+
+    applyI18n();
   </script>
 </body>
 </html>

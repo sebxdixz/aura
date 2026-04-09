@@ -438,8 +438,19 @@
     }
 
     async function resolveIncident(incidentId) {
+      const rawNotes = window.prompt("Describe what was changed and how this incident was fixed:", "");
+      if (rawNotes == null) return;
+      const notes = rawNotes.trim();
+      if (notes.length < 10) {
+        toast("Resolution notes are required (min 10 characters).", true);
+        return;
+      }
       try {
-        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}/resolve`, { method: "POST" });
+        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(incidentId)}/resolve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resolution_notes: notes }),
+        });
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || "resolve failed");
         toast(`Resolved ${incidentId.toUpperCase()}`);

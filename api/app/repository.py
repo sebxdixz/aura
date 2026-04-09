@@ -17,11 +17,14 @@ from sqlalchemy.orm import Session
 from .models import (
     AuditLogRecord,
     IncidentRecord,
+    IntegrationConfigStatus,
     NotificationRecord,
+    TenantIntegrationsStatus,
     TenantInsightsSummary,
     TenantDashboard,
     TenantRecord,
 )
+from .secrets import decrypt_text
 
 
 # ──────────────────────────────────────────────────────────────
@@ -74,6 +77,7 @@ def _row_to_incident(row: Any) -> IncidentRecord:
         status=row.status,
         created_at=_iso(row.created_at),
         resolved_at=_iso_or_none(row.resolved_at),
+        resolution_notes=row.resolution_notes,
         file_meta=row.file_meta,       # dict | None  → Pydantic coerces to FileMeta
         triage=row.triage,             # dict         → Pydantic coerces to TriageOutput
         ticket=row.ticket,             # dict         → Pydantic coerces to TicketRecord
@@ -136,10 +140,10 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
             """
             INSERT INTO incidents
                 (incident_id, tenant_id, reporter_email, description,
-                 status, file_meta, triage, ticket, notifications)
+                 status, resolution_notes, file_meta, triage, ticket, notifications)
             VALUES
                 (:iid, :tid, :email, :desc,
-                 :status,
+                 :status, :resolution_notes,
                  cast(:file_meta as jsonb),
                  cast(:triage   as jsonb),
                  cast(:ticket   as jsonb),
@@ -153,6 +157,7 @@ def save_incident(db: Session, record: IncidentRecord) -> IncidentRecord:
             "email":     str(record.reporter_email),
             "desc":      record.description,
             "status":    record.status,
+            "resolution_notes": record.resolution_notes,
             "file_meta": json.dumps(record.file_meta.model_dump() if record.file_meta else None),
             "triage":    json.dumps(record.triage.model_dump()),
             "ticket":    json.dumps(record.ticket.model_dump()),
@@ -214,6 +219,7 @@ def find_open_duplicate_incident(db: Session, tenant_id: str, description: str) 
 def resolve_incident(
     db: Session,
     incident_id: str,
+    resolution_notes: str,
     extra_notification: NotificationRecord,
 ) -> IncidentRecord | None:
     """
@@ -235,6 +241,7 @@ def resolve_incident(
             UPDATE incidents
             SET  status       = 'resolved',
                  resolved_at  = :now,
+                 resolution_notes = :resolution_notes,
                  notifications = notifications || cast(:notif as jsonb)
             WHERE incident_id = :iid
             """
@@ -242,6 +249,7 @@ def resolve_incident(
         {
             "iid":   incident_id,
             "now":   now,
+            "resolution_notes": resolution_notes,
             "notif": json.dumps([extra_notification.model_dump()]),
         },
     )
@@ -373,3 +381,124 @@ def write_audit_log(
         db.commit()
     except Exception:
         db.rollback()
+
+
+def ensure_integrations_schema(db: Session) -> None:
+    db.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS tenant_integrations (
+                id BIGSERIAL PRIMARY KEY,
+                tenant_id VARCHAR(100) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+                provider VARCHAR(30) NOT NULL,
+                encrypted_config TEXT NOT NULL,
+                configured_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (tenant_id, provider)
+            )
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tenant_integrations_tenant
+            ON tenant_integrations (tenant_id)
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            ALTER TABLE incidents
+            ADD COLUMN IF NOT EXISTS resolution_notes TEXT
+            """
+        )
+    )
+    db.commit()
+
+
+def upsert_tenant_integration(
+    db: Session,
+    *,
+    tenant_id: str,
+    provider: str,
+    encrypted_config: str,
+    configured_fields: list[str],
+) -> None:
+    db.execute(
+        text(
+            """
+            INSERT INTO tenant_integrations (tenant_id, provider, encrypted_config, configured_fields)
+            VALUES (:tenant_id, :provider, :encrypted_config, CAST(:configured_fields AS jsonb))
+            ON CONFLICT (tenant_id, provider) DO UPDATE
+            SET encrypted_config = EXCLUDED.encrypted_config,
+                configured_fields = EXCLUDED.configured_fields,
+                updated_at = NOW()
+            """
+        ),
+        {
+            "tenant_id": tenant_id,
+            "provider": provider,
+            "encrypted_config": encrypted_config,
+            "configured_fields": json.dumps(configured_fields),
+        },
+    )
+    db.commit()
+
+
+def get_tenant_integration_secrets(
+    db: Session,
+    *,
+    tenant_id: str,
+    provider: str,
+) -> dict[str, str] | None:
+    row = db.execute(
+        text(
+            """
+            SELECT encrypted_config
+            FROM tenant_integrations
+            WHERE tenant_id = :tenant_id AND provider = :provider
+            """
+        ),
+        {"tenant_id": tenant_id, "provider": provider},
+    ).fetchone()
+    if not row:
+        return None
+    payload = json.loads(decrypt_text(str(row.encrypted_config)))
+    if not isinstance(payload, dict):
+        return None
+    return {str(k): str(v) for k, v in payload.items() if str(v).strip()}
+
+
+def tenant_integrations_status(db: Session, tenant_id: str) -> TenantIntegrationsStatus:
+    rows = db.execute(
+        text(
+            """
+            SELECT provider, configured_fields, updated_at
+            FROM tenant_integrations
+            WHERE tenant_id = :tenant_id
+            """
+        ),
+        {"tenant_id": tenant_id},
+    ).fetchall()
+    lookup: dict[str, Any] = {str(row.provider): row for row in rows}
+
+    def _status(provider: str) -> IntegrationConfigStatus:
+        row = lookup.get(provider)
+        if not row:
+            return IntegrationConfigStatus(provider=provider, configured=False, configured_fields=[], updated_at=None)  # type: ignore[arg-type]
+        fields = row.configured_fields if isinstance(row.configured_fields, list) else []
+        return IntegrationConfigStatus(
+            provider=provider,  # type: ignore[arg-type]
+            configured=bool(fields),
+            configured_fields=[str(f) for f in fields],
+            updated_at=_iso_or_none(row.updated_at),
+        )
+
+    return TenantIntegrationsStatus(
+        tenant_id=tenant_id,
+        slack=_status("slack"),
+        jira=_status("jira"),
+    )

@@ -1,155 +1,53 @@
-# QUICKGUIDE
+# AURA Quick Setup Guide ⚡
 
-## 1. Prerequisites
+Follow this guide to spin up the local microservices container architecture and run the E2E Demo natively.
 
-- Docker Desktop (or Docker Engine + Compose plugin)
-- Node.js available for Playwright tests
-- Ports:
-  - `3000` report portal (public intake)
-  - `3001` dashboard (ops/internal)
-  - `8000` api
-  - `5432` db
-- DB image uses `pgvector` (vector store in same Postgres container).
+## 1. Clone the project
 
-## 2. Run the stack
+Open up your terminal and clone the repository locally:
 
 ```bash
+git clone <repository_url>
 cd aura
+```
+
+## 2. Environment Variables
+
+Create your environment configuration by copying the template file:
+
+```bash
 cp .env.example .env
+```
+
+Open `.env` in your favorite editor. The main thing you need to authorize is your API provider for the Hybrid Multi-Modal Pipeline. AURA gracefully supports both standalone **OpenAI** integration and **OpenRouter** orchestrations.
+
+We highly recommend utilizing **OpenRouter** to spin up the multi-staged (Gemini 2.5 + GPT) default pipeline.
+
+Inside the `.env` file, fill the following key mapping:
+```env
+OPENROUTER_API_KEY=sk-or-v1-xxx...
+TENANT_ADMIN_KEY=hackathon2024
+```
+*(If you do not have OpenRouter, simply leave it blank and fill out the `OPENAI_API_KEY=sk-...` field instead. The LLM processor will gracefully fallback automatically).*
+
+## 3. Build & Run Containers
+
+Our docker architecture builds out the Web UI, API Backend, Node proxy and Databases simultaneously.
+
+```bash
 docker compose up --build
 ```
+*Wait a few minutes while Alpine packages and Python libraries compile internally and standard PostgreSQL instances initialize.*
 
-## 3. Open services
+## 4. Test the End-to-End Workflow
 
-- Report portal: `http://localhost:3000/intake/{tenant_id}`
-- Dashboard: `http://localhost:3001`
-- API docs: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
-- Metrics: `http://localhost:8000/metrics`
-- RAG status: `http://localhost:8000/api/rag/status`
+AURA serves one unified web entrypoint:
 
-## 4. API smoke flow (manual)
+1. **Welcome (Port 3000):** Navigate to `http://localhost:3000`. From there you can login/register your tenant and understand the platform flow.
+2. **Public Intake:** Use `http://localhost:3000/intake/{tenant}` for customer incident reports.
+3. **Admin Dashboard:** Use `http://localhost:3000/dashboard`.
+   - Click `Demo Judge` in dashboard login or authenticate with your tenant and `TENANT_ADMIN_KEY`.
+   - Explore incident statistics and use Settings to sync GitHub into tenant-scoped Vector RAG.
 
-```bash
-# Register tenant
-curl -s -X POST http://localhost:8000/api/tenants/register \
-  -H "Content-Type: application/json" \
-  -d '{"tenant_id":"demo-tenant","name":"Demo Tenant"}'
-
-# Submit incident
-curl -s -X POST http://localhost:8000/api/incidents/submit \
-  -F "tenant_id=demo-tenant" \
-  -F "reporter_email=reporter@demo.com" \
-  -F "description=Checkout payment 500 with coupon" \
-  -F "attachment=@tests/fixtures/incident.txt;type=text/plain"
-
-# Submit incident with PDF evidence
-curl -s -X POST http://localhost:8000/api/incidents/submit \
-  -F "tenant_id=demo-tenant" \
-  -F "reporter_email=reporter@demo.com" \
-  -F "description=Checkout outage attached in PDF evidence" \
-  -F "attachment=@/path/to/incident.pdf;type=application/pdf"
-
-# Submit incident with audio evidence
-curl -s -X POST http://localhost:8000/api/incidents/submit \
-  -F "tenant_id=demo-tenant" \
-  -F "reporter_email=reporter@demo.com" \
-  -F "description=Checkout outage reported by voice note" \
-  -F "attachment=@/path/to/incident.wav;type=audio/wav"
-
-# List incidents by tenant
-curl -s "http://localhost:8000/api/incidents?tenant_id=demo-tenant"
-
-# Resolve incident (replace INCIDENT_ID)
-curl -s -X POST http://localhost:8000/api/incidents/INCIDENT_ID/resolve
-
-# Check RAG/vector index status for a tenant
-curl -s "http://localhost:8000/api/rag/status?tenant_id=demo-tenant"
-
-# Trigger local-path RAG reindex for a tenant (admin-only)
-curl -s -X POST "http://localhost:8000/api/rag/reindex?tenant_id=demo-tenant" \
-  -H "x-tenant-admin-key: change-me"
-
-# Sync GitHub repo directly into vector DB (no git clone, admin-only)
-curl -s -X POST http://localhost:8000/api/rag/github-sync \
-  -H "Content-Type: application/json" \
-  -H "x-tenant-admin-key: change-me" \
-  -d '{"tenant_id":"demo-tenant","repo_url":"https://github.com/medusajs/medusa","branch":"main"}'
-```
-
-## 5. Run automated tests (Playwright)
-
-Install once:
-
-```bash
-npm install
-npx playwright install chromium
-```
-
-Run API E2E suite:
-
-```bash
-npm run test:e2e
-```
-
-The command waits for API health before running tests.
-If needed, you can tune wait behavior:
-
-```bash
-API_BASE_URL=http://127.0.0.1:8000
-API_WAIT_TIMEOUT_MS=60000
-API_WAIT_INTERVAL_MS=1500
-```
-
-Optional (when frontend is stable):
-
-```bash
-npm run test:e2e:web
-npm run test:e2e:all
-```
-
-## 6. What the API tests validate
-
-- Tenant registration
-- Incident submit -> resolve E2E
-- Guardrail rejection for prompt-injection patterns
-- Deduplication for repeated open incidents in same tenant
-- Tenant isolation with `tenant_id` filter
-- Multimodal intake acceptance for `text/plain`, `application/pdf`, `audio/wav`
-- Triage includes:
-  - `severity_score`
-  - `severity_rationale`
-  - `runbook_suggestions`
-- Observability endpoints:
-  - `GET /api/tenants/{tenant_id}/audit-logs`
-  - `GET /api/tenants/{tenant_id}/insights/summary`
-- RAG/vector retrieval:
-  - `GET /api/rag/status`
-  - `POST /api/rag/reindex`
-
-## 7. Notes
-
-- Default mode is mock integrations (`MOCK_MODE=true`).
-- Default triage mode is mock multimodal (`MOCK_MODE=true`).
-- To use live model triage, set:
-  - `MOCK_MODE=false`
-  - `OPENAI_API_KEY=<your_key>`
-  - optional `OPENAI_BASE_URL`
-  - optional `OPENAI_TRIAGE_MODEL` and `OPENAI_TRANSCRIPTION_MODEL`
-- To use two-stage multimodal triage via OpenRouter, set:
-  - `MOCK_MODE=false`
-  - `MULTIMODAL_PIPELINE=openrouter_two_stage`
-  - `OPENROUTER_API_KEY=<your_key>`
-  - `OPENROUTER_MULTIMODAL_MODEL=google/gemini-2.5-flash`
-  - `OPENROUTER_ANALYSIS_MODEL=<stronger_model>`
-- To use ReAct ops with OpenRouter + MCP, set:
-  - `REACT_ENGINE=openrouter_mcp`
-  - `OPENROUTER_API_KEY=<your_key>`
-  - `OPENROUTER_MODEL=<model_on_openrouter>`
-  - `MCP_BRIDGE_URL=http://mcp_bridge:8080/invoke` (default in Docker network)
-  - `MCP_JIRA_TOOL=jira_create_issue`
-  - `MCP_SLACK_TOOL=slack_post_message`
-  - Jira MCP credentials: `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN` (or `JIRA_PERSONAL_TOKEN`)
-  - Slack MCP credentials: `SLACK_BOT_TOKEN`, `SLACK_TEAM_ID`, `SLACK_DEFAULT_CHANNEL_ID`
-- Retry/fallback behavior is controlled by `.env`.
-- Persistent storage is PostgreSQL; data survives API restarts.
+## Troubleshooting
+If a system rate-limit hits or you do not have access to Jira/Slack official webhook tokens, don't worry! By default `.env` forces `MOCK_MODE=false` combined with predefined `mock-slack` fallback modes. AURA will intercept execution requests and mock the internal process returning 200 OP codes to demonstrate the workflow gracefully rather than crashing.

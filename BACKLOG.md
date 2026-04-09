@@ -6,8 +6,8 @@ Backlog operativo para construir AURA con foco en entrega de hackathon.
 
 ## Estado Actual (2026-04-08)
 
-- Estructura base creada: `web`, `web_dashboard`, `api`, `db`.
-- Stack validado con `docker compose up --build` (`web`, `web_dashboard`, `api`, `db` en estado healthy/up).
+- Estructura base creada: `web`, `api`, `db` (`web` unificado con rutas `/`, `/dashboard`, `/intake/{tenant}`).
+- Stack validado con `docker compose up --build` (`web`, `api`, `db` en estado healthy/up).
 - API E2E implementada con endpoints de submit/list/get/resolve.
 - Frontend en evolucion paralela por otro agente.
 - Guardrails basicos activos (input, archivos, allowlist de tools).
@@ -35,9 +35,10 @@ Backlog operativo para construir AURA con foco en entrega de hackathon.
   - retrieval en triage para enriquecer `relevant_files`
   - sync desde GitHub directo a vector DB (sin `git clone`)
   - endpoints de sync/reindex protegidos por credencial admin de tenant (`x-tenant-admin-key`)
-- Frontend separado por rol:
-  - `web` expone solo portal de reporte (`/intake/{tenant}`)
-  - `web_dashboard` expone dashboard de operaciones en puerto separado
+- Frontend separado por ruta en un mismo servicio `web`:
+  - `/` welcome + onboarding (login/register)
+  - `/dashboard` dashboard de operaciones
+  - `/intake/{tenant}` portal de reporte publico
 - ReAct opcional para operaciones:
   - planificacion con OpenRouter
   - ejecucion de acciones Jira/Slack via MCP
@@ -78,7 +79,7 @@ Entregar un sistema demoable que cumpla el flujo:
 
 ## P0 - Debe quedar si o si
 
-- [x] `P0-01` Docker Compose levanta `web`, `web_dashboard`, `api`, `db` sin pasos manuales.
+- [x] `P0-01` Docker Compose levanta `web`, `api`, `db` sin pasos manuales.
 - [x] `P0-02` Intake UI acepta texto + archivo.
 - [x] `P0-03` API procesa incidente y ejecuta triage con LLM multimodal.
 - [x] `P0-04` Triage produce salida JSON valida y consistente.

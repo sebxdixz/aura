@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     status          VARCHAR(20)  NOT NULL DEFAULT 'open',
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     resolved_at     TIMESTAMPTZ,
+    resolution_notes TEXT,
     file_meta       JSONB,
     triage          JSONB        NOT NULL,
     ticket          JSONB        NOT NULL,
@@ -49,6 +50,17 @@ CREATE TABLE IF NOT EXISTS code_chunks (
     UNIQUE (tenant_id, repo_name, file_path, chunk_index)
 );
 
+CREATE TABLE IF NOT EXISTS tenant_integrations (
+    id BIGSERIAL PRIMARY KEY,
+    tenant_id VARCHAR(100) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    provider VARCHAR(30) NOT NULL,
+    encrypted_config TEXT NOT NULL,
+    configured_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, provider)
+);
+
 -- Indexes for tenant isolation and common query patterns
 CREATE INDEX IF NOT EXISTS idx_incidents_tenant_id ON incidents (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_incidents_status    ON incidents (status);
@@ -59,3 +71,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_stage         ON audit_logs (stage);
 CREATE INDEX IF NOT EXISTS idx_code_chunks_repo    ON code_chunks (repo_name);
 CREATE INDEX IF NOT EXISTS idx_code_chunks_tenant  ON code_chunks (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_code_chunks_embed   ON code_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_tenant_integrations_tenant ON tenant_integrations (tenant_id);

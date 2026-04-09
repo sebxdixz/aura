@@ -937,6 +937,45 @@
         align-items: start;
       }
 
+      /* Settings view: keep result panel constrained on the right */
+      .config-layout {
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+      }
+
+      .config-main { min-width: 0; }
+
+      .config-result {
+        min-width: 0;
+        margin-bottom: 0;
+        overflow: hidden;
+        position: sticky;
+        top: 72px;
+      }
+
+      .config-result pre {
+        margin: 0;
+        max-width: 100%;
+        max-height: min(60vh, 560px);
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .context-card-body {
+        display: grid;
+        gap: 10px;
+        padding: 14px 16px 16px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        line-height: 1.55;
+        color: var(--g600);
+      }
+
+      .context-card-body > div {
+        min-width: 0;
+        word-break: break-word;
+      }
+
       /* ═══ TENANT DETAIL ══════════════════════════════════════════ */
       .tenant-detail-grid { display: flex; flex-direction: column; }
 
@@ -975,6 +1014,9 @@
       @media (max-width: 1100px) {
         .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .two-col { grid-template-columns: 1fr; }
+        .config-layout { grid-template-columns: 1fr; }
+        .config-result { position: static; }
+        .config-result pre { max-height: 45vh; }
         .result-row { grid-template-columns: 1fr; }
       }
 
@@ -1184,6 +1226,32 @@
             </div>
           </div>
 
+          <div class="two-col" style="margin-top:14px;">
+            <div class="section-block">
+              <div class="section-header">
+                <span class="section-label">Tenant Context</span>
+                <span class="section-meta" id="tenantContextMeta">—</span>
+              </div>
+              <div class="context-card-body">
+                <div>Workspace: <span id="tenantContextId">—</span></div>
+                <div>Public Intake URL: <span id="tenantContextIntake">—</span></div>
+                <div>Access: Admin dashboard + public customer intake isolated by tenant.</div>
+              </div>
+            </div>
+
+            <div class="section-block">
+              <div class="section-header">
+                <span class="section-label">RAG Index Status</span>
+                <span class="section-meta" id="ragStateBadge">UNKNOWN</span>
+              </div>
+              <div class="context-card-body">
+                <div>Repo: <span id="ragRepoName">—</span></div>
+                <div>Indexed chunks: <span id="ragChunkCount">0</span></div>
+                <div>Mode: <span id="ragMode">—</span></div>
+              </div>
+            </div>
+          </div>
+
           <div class="section-block">
             <div class="section-header">
               <span class="section-label" data-i18n="recent_incidents">Recent Incidents</span>
@@ -1205,8 +1273,8 @@
             <div class="page-title page-title-sm" data-i18n="intake_title">Report Incident</div>
           </div>
 
-          <div class="two-col">
-            <div>
+          <div class="two-col config-layout">
+            <div class="config-main">
               <form id="incidentForm" class="form-grid">
                 <div class="form-row">
                   <div class="field">
@@ -1354,13 +1422,73 @@
                   </div>
                 </form>
               </div>
+
+              <div class="section-block" style="margin-top:16px;">
+                <div class="section-header">
+                  <span class="section-label">Slack Integration (Tenant Secret)</span>
+                </div>
+                <form id="slackConfigForm" class="form-grid">
+                  <div class="field">
+                    <div class="field-label">Webhook URL (optional)</div>
+                    <input id="slack_webhook_url" placeholder="https://hooks.slack.com/services/..." />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Bot Token (optional)</div>
+                    <input id="slack_bot_token" type="password" placeholder="xoxb-..." />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Default Channel ID</div>
+                    <input id="slack_default_channel_id" placeholder="C01234567" />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Team ID</div>
+                    <input id="slack_team_id" placeholder="T01234567" />
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Slack Config</button>
+                    <button type="button" class="btn btn-ghost" id="btnTestSlack">Test Slack</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="section-block" style="margin-top:16px;">
+                <div class="section-header">
+                  <span class="section-label">Jira Integration (Tenant Secret)</span>
+                </div>
+                <form id="jiraConfigForm" class="form-grid">
+                  <div class="field">
+                    <div class="field-label">Jira Base URL</div>
+                    <input id="jira_base_url" placeholder="https://your-org.atlassian.net" />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Jira Email</div>
+                    <input id="jira_email" placeholder="sre@your-org.com" />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Jira API Token</div>
+                    <input id="jira_api_token" type="password" placeholder="atlassian-api-token" />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Project Key or Name</div>
+                    <input id="jira_project_key" placeholder="AURA or My Software Team" />
+                  </div>
+                  <div class="field">
+                    <div class="field-label">Issue Type (name or ID)</div>
+                    <input id="jira_issue_type" placeholder="Bug, Task, Tarea or 10001" />
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save Jira Config</button>
+                    <button type="button" class="btn btn-ghost" id="btnTestJira">Test Jira</button>
+                  </div>
+                </form>
+              </div>
             </div>
             
-            <div class="section-block" id="syncResultBlock" style="display:none;">
+            <div class="section-block config-result" id="syncResultBlock" style="display:none;">
               <div class="section-header">
                 <span class="section-label" data-i18n="result">Result</span>
               </div>
-              <pre id="syncResultOut" style="font-family:var(--font-mono);font-size:12px;color:var(--black);background:var(--g50);padding:16px;overflow:auto;"></pre>
+              <pre id="syncResultOut" style="font-family:var(--font-mono);font-size:12px;color:var(--black);background:var(--g50);padding:16px;"></pre>
             </div>
           </div>
         </div>
@@ -1470,6 +1598,8 @@
         th_sev:            'Severity',
         th_svc:            'Service',
         th_status:         'Status',
+        th_tokens:         'Tokens',
+        th_cost:           'Cost USD',
         th_created:        'Created',
         /* result labels */
         rl_summary:        'Technical Summary',
@@ -1478,6 +1608,7 @@
         rl_fix:            'Auto-Fix Proposal',
         rl_cli:            'Suggested CLI Command',
         rl_runbook:        'Runbook Steps',
+        rl_resolution:     'Resolution Notes',
         rl_notifs:         'Notifications',
         btn_resolve:       'Mark Resolved',
         btn_view_all:      'View All →',
@@ -1502,6 +1633,8 @@
         toast_registered:  'TENANT REGISTERED',
         toast_workspace:   'WORKSPACE',
         toast_err_notfound:'TENANT NOT FOUND',
+        resolve_prompt:    'Describe what was changed and how this incident was fixed:',
+        resolve_required:  'Resolution notes are required (min 10 characters).',
       },
       es: {
         logo_sub:          'Agente de Uptime y Resolución',
@@ -1573,6 +1706,8 @@
         th_sev:            'Severidad',
         th_svc:            'Servicio',
         th_status:         'Estado',
+        th_tokens:         'Tokens',
+        th_cost:           'Costo USD',
         th_created:        'Creado',
         rl_summary:        'Resumen Técnico',
         rl_ticket:         'Ticket',
@@ -1580,6 +1715,7 @@
         rl_fix:            'Propuesta de Auto-Fix',
         rl_cli:            'Comando CLI Sugerido',
         rl_runbook:        'Pasos del Runbook',
+        rl_resolution:     'Notas de Resolucion',
         rl_notifs:         'Notificaciones',
         btn_resolve:       'Marcar Resuelto',
         btn_view_all:      'Ver Todos →',
@@ -1602,6 +1738,8 @@
         toast_registered:  'INQUILINO REGISTRADO',
         toast_workspace:   'ESPACIO',
         toast_err_notfound:'INQUILINO NO ENCONTRADO',
+        resolve_prompt:    'Describe que se cambio y como se soluciono este incidente:',
+        resolve_required:  'Las notas de resolucion son obligatorias (minimo 10 caracteres).',
       }
     };
 
@@ -1654,8 +1792,9 @@
     let lastIncidentId = null;
 
     /* ═══ LOGIN LOGIC ═══════════════════════════════════════════ */
-    const savedAdmin = localStorage.getItem('aura_admin_tenant');
-    if (savedAdmin) {
+    const savedAdmin = (localStorage.getItem('aura_admin_tenant') || '').trim();
+    const savedAdminKey = (localStorage.getItem('aura_admin_key') || '').trim();
+    if (savedAdmin && savedAdminKey) {
       document.body.classList.add('logged-in');
       currentTenant = savedAdmin;
       document.getElementById('tenantChip').classList.add('has-tenant');
@@ -1665,8 +1804,13 @@
       document.getElementById('tenantChip').style.pointerEvents = 'none';
       if (document.getElementById('f_tid')) {
         document.getElementById('f_tid').value = savedAdmin;
+        updateIntakeUrl(savedAdmin);
       }
     } else {
+      if (savedAdmin || savedAdminKey) {
+        localStorage.removeItem('aura_admin_tenant');
+        localStorage.removeItem('aura_admin_key');
+      }
       document.body.classList.remove('logged-in');
     }
 
@@ -1805,6 +1949,10 @@
     document.getElementById('modalConfirm').addEventListener('click', switchTenant);
     modalInput.addEventListener('keydown', e => { if (e.key === 'Enter') switchTenant(); });
 
+    function publicIntakeBaseUrl() {
+      return window.location.origin;
+    }
+
     function switchTenant() {
       const tid = modalInput.value.trim();
       if (!tid) return;
@@ -1823,7 +1971,7 @@
     /* ═══ INTAKE URL ═════════════════════════════════════════════ */
     function updateIntakeUrl(tid) {
       document.getElementById('intakeUrlVal').textContent =
-        `${location.origin}/intake/${tid || 'your-tenant'}`;
+        `${publicIntakeBaseUrl()}/intake/${tid || 'your-tenant'}`;
     }
 
     document.getElementById('f_tid').addEventListener('input', e => updateIntakeUrl(e.target.value.trim()));
@@ -1897,6 +2045,10 @@
       const tprov   = d.ticket?.provider || '—';
       const turl    = d.ticket?.url || '#';
       const ts      = new Date(d.created_at).toISOString().replace('T',' ').slice(0,19) + ' UTC';
+      const usage   = usageFromIncident(d);
+      const tokLbl  = formatTokensValue(usage.tokens);
+      const usdLbl  = formatUsdValue(usage.costUsd);
+      const resolutionNotes = String(d.resolution_notes || '').trim();
 
       const runItems = runs.map((r, i) => `<li data-n="${i+1}">${escHtml(r)}</li>`).join('');
 
@@ -1950,11 +2102,20 @@
                 <ul class="runbook-list" style="margin-top:6px;">${runItems}</ul>
               </div>
             </div>` : ''}
+            ${resolutionNotes ? `
+            <div class="result-row">
+              <div class="result-cell full">
+                <div class="result-cell-label">${t('rl_resolution')}</div>
+                <div class="result-cell-val">${escHtml(resolutionNotes)}</div>
+              </div>
+            </div>` : ''}
             ${notifs.length ? `<div class="result-notifs">${notifRows}</div>` : ''}
             <div class="result-meta-bar">
               <span>${ts}</span>
               <span>${t('tenant_meta')} ${escHtml(d.tenant_id)}</span>
               <span>SVC: ${escHtml(svc)}</span>
+              <span>${t('th_tokens')}: ${escHtml(tokLbl)}</span>
+              <span>${t('th_cost')}: ${escHtml(usdLbl)}</span>
               ${d.file_meta ? `<span>FILE: ${escHtml(d.file_meta.filename)}</span>` : ''}
             </div>
           </div>
@@ -1981,8 +2142,19 @@
 
     /* ═══ RESOLVE ════════════════════════════════════════════════ */
     async function resolveIncident(id) {
+      const rawNotes = window.prompt(t('resolve_prompt'), '');
+      if (rawNotes == null) return;
+      const notes = rawNotes.trim();
+      if (notes.length < 10) {
+        toast(t('resolve_required'), 'err');
+        return;
+      }
       try {
-        const res  = await fetch(`${API}/api/incidents/${id}/resolve`, { method: 'POST' });
+        const res  = await fetch(`${API}/api/incidents/${id}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolution_notes: notes }),
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '');
         toast(`${t('toast_resolved')}: ${id.toUpperCase()}`, 'ok');
@@ -1994,6 +2166,11 @@
     async function loadDashboard() {
       if (!currentTenant) return;
       document.getElementById('dashTenantMeta').textContent = `${t('tenant_meta')} ${currentTenant.toUpperCase()}`;
+      document.getElementById('tenantContextMeta').textContent = currentTenant.toUpperCase();
+      document.getElementById('tenantContextId').textContent = currentTenant;
+      document.getElementById('tenantContextIntake').textContent = `${publicIntakeBaseUrl()}/intake/${currentTenant}`;
+      loadRagStatus();
+      refreshIntegrationStatus();
 
       try {
         const [dr, ir] = await Promise.all([
@@ -2017,6 +2194,32 @@
           : `<div class="empty"><div class="empty-code">0x00 · CLEAN</div><div class="empty-msg">${t('dash_empty')}</div></div>`;
 
       } catch (err) { toast(`ERROR: ${err.message}`, 'err'); }
+    }
+
+    async function loadRagStatus() {
+      if (!currentTenant) return;
+      const stateEl = document.getElementById('ragStateBadge');
+      const repoEl = document.getElementById('ragRepoName');
+      const chunkEl = document.getElementById('ragChunkCount');
+      const modeEl = document.getElementById('ragMode');
+      stateEl.textContent = 'CHECKING';
+
+      try {
+        const res = await fetch(`${API}/api/rag/status?tenant_id=${encodeURIComponent(currentTenant)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'RAG status unavailable');
+
+        const chunks = Number(data.indexed_chunks || 0);
+        stateEl.textContent = chunks > 0 ? 'INDEXED' : 'EMPTY';
+        repoEl.textContent = data.repo_name || 'n/a';
+        chunkEl.textContent = String(chunks);
+        modeEl.textContent = data.path_exists ? 'mounted codebase + vector db' : 'vector db only';
+      } catch (_) {
+        stateEl.textContent = 'ERROR';
+        repoEl.textContent = 'n/a';
+        chunkEl.textContent = '0';
+        modeEl.textContent = 'unavailable';
+      }
     }
 
     /* ═══ INCIDENTS LIST ════════════════════════════════════════ */
@@ -2046,12 +2249,36 @@
 
     document.getElementById('refreshBtn').addEventListener('click', loadIncidents);
 
+    function usageFromIncident(inc) {
+      const usage = inc?.triage?.llm_usage || {};
+      const tokens = Number(usage.total_tokens);
+      const costUsd = Number(usage.cost_usd);
+      return {
+        tokens: Number.isFinite(tokens) && tokens >= 0 ? Math.round(tokens) : null,
+        costUsd: Number.isFinite(costUsd) && costUsd >= 0 ? costUsd : null,
+      };
+    }
+
+    function formatTokensValue(value) {
+      if (value == null) return '—';
+      return new Intl.NumberFormat(lang === 'es' ? 'es-CL' : 'en-US').format(value);
+    }
+
+    function formatUsdValue(value) {
+      if (value == null) return '—';
+      const decimals = value > 0 && value < 0.01 ? 6 : 2;
+      return `$${value.toFixed(decimals)}`;
+    }
+
     function renderTable(list, compact) {
       const rows = list.map(inc => {
         const sev  = inc.triage?.severity || 'low';
         const svc  = inc.triage?.affected_service || '—';
         const ts   = new Date(inc.created_at).toISOString().slice(0,16).replace('T',' ');
         const stat = inc.status;
+        const usage = usageFromIncident(inc);
+        const tokensLabel = formatTokensValue(usage.tokens);
+        const usdLabel = formatUsdValue(usage.costUsd);
 
         return `<tr>
           <td><span class="cell-id">${escHtml(inc.incident_id)}</span></td>
@@ -2059,6 +2286,8 @@
           <td><span class="sev sev-${sev}">${sev.toUpperCase()}</span></td>
           <td style="font-family:var(--font-mono);font-size:10px;color:var(--g500);">${escHtml(svc)}</td>
           ${!compact ? `<td><span class="status-badge status-${stat}">${stat.toUpperCase()}</span></td>` : ''}
+          ${!compact ? `<td style="font-family:var(--font-mono);font-size:10px;color:var(--g600);text-align:right;">${escHtml(tokensLabel)}</td>` : ''}
+          ${!compact ? `<td style="font-family:var(--font-mono);font-size:10px;color:var(--g600);text-align:right;">${escHtml(usdLabel)}</td>` : ''}
           <td style="font-family:var(--font-mono);font-size:10px;color:var(--g400);">${ts}</td>
           ${!compact ? `<td>${stat === 'open'
             ? `<button class="btn btn-ghost btn-sm" onclick="resolveIncident('${inc.incident_id}')">${t('btn_resolve_short')}</button>`
@@ -2076,6 +2305,8 @@
               <th>${t('th_sev')}</th>
               <th>${t('th_svc')}</th>
               ${!compact ? `<th>${t('th_status')}</th>` : ''}
+              ${!compact ? `<th style="text-align:right;">${t('th_tokens')}</th>` : ''}
+              ${!compact ? `<th style="text-align:right;">${t('th_cost')}</th>` : ''}
               <th>${t('th_created')}</th>
               ${!compact ? '<th></th>' : ''}
             </tr>
@@ -2101,7 +2332,7 @@
         if (!res.ok) throw new Error(d.detail || JSON.stringify(d));
 
         toast(`${t('toast_registered')}: ${d.tenant_id.toUpperCase()}`, 'ok');
-        const intakeUrl = `${location.origin}/intake/${d.tenant_id}`;
+        const intakeUrl = `${publicIntakeBaseUrl()}/intake/${d.tenant_id}`;
         const ts = new Date(d.created_at).toISOString().slice(0,16).replace('T',' ') + ' UTC';
 
         document.getElementById('tenantResult').innerHTML = `
@@ -2179,13 +2410,35 @@
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
-    /* ═══ DEEP LINK /intake/:tenant ═════════════════════════════ */
-    const pathMatch = window.location.pathname.match(/^\/intake\/([A-Za-z0-9._-]+)\/?$/);
-    if (pathMatch) {
-      const tid = decodeURIComponent(pathMatch[1]);
-      document.getElementById('f_tid').value = tid;
-      updateIntakeUrl(tid);
-      navigate('intake');
+    /* ═══ INITIAL ROUTE BOOTSTRAP ═══════════════════════════════ */
+    function bootstrapRouteFromPath() {
+      const pathMatch = window.location.pathname.match(/^\/intake\/([A-Za-z0-9._-]+)\/?$/);
+      if (pathMatch) {
+        const tid = decodeURIComponent(pathMatch[1]);
+        document.getElementById('f_tid').value = tid;
+        updateIntakeUrl(tid);
+        navigate('intake');
+        return;
+      }
+
+      const path = window.location.pathname.replace(/\/+$/, '') || '/';
+      if (path === '/intake') {
+        navigate('intake');
+        return;
+      }
+      if (path === '/incidents') {
+        navigate('incidents');
+        return;
+      }
+      if (path === '/tenants') {
+        navigate('tenants');
+        return;
+      }
+      if (path === '/config' || path === '/settings') {
+        navigate('config');
+        return;
+      }
+      navigate('dashboard');
     }
 
     /* ═══ SETTINGS / GITHUB SYNC ══════════════════════════════════ */
@@ -2195,19 +2448,20 @@
       const url = document.getElementById('github_url').value.trim();
       const outBlock = document.getElementById('syncResultBlock');
       const outText = document.getElementById('syncResultOut');
+      if (!currentTenant) {
+        toast('Select tenant first', 'err');
+        return;
+      }
 
       btn.disabled = true;
       btn.textContent = 'Syncing...';
       outBlock.style.display = 'block';
-      outText.textContent = `Cloning ${url} and reindexing... this may take a moment.`;
+      outText.textContent = `Syncing ${url} into vector DB for tenant ${currentTenant}...`;
 
       try {
         const res = await fetch(`${API}/api/rag/github-sync`, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-tenant-admin-key': localStorage.getItem('aura_admin_key')
-          },
+          headers: adminJsonHeaders(),
           body: JSON.stringify({ tenant_id: currentTenant, repo_url: url })
         });
         const data = await res.json();
@@ -2215,6 +2469,7 @@
         
         outText.textContent = JSON.stringify(data, null, 2);
         toast('RAG Synced Successfully', 'ok');
+        loadRagStatus();
       } catch (err) {
         outText.textContent = String(err);
         toast('Sync Failed', 'err');
@@ -2224,8 +2479,121 @@
       }
     });
 
+    function adminJsonHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'x-tenant-admin-key': localStorage.getItem('aura_admin_key') || '',
+      };
+    }
+
+    async function refreshIntegrationStatus() {
+      if (!currentTenant) return;
+      const outBlock = document.getElementById('syncResultBlock');
+      const outText = document.getElementById('syncResultOut');
+      try {
+        const res = await fetch(
+          `${API}/api/tenants/${encodeURIComponent(currentTenant)}/integrations`,
+          { headers: { 'x-tenant-admin-key': localStorage.getItem('aura_admin_key') || '' } }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Integration status failed');
+        outBlock.style.display = 'block';
+        outText.textContent = `Integration status for ${currentTenant}\n\n${JSON.stringify(data, null, 2)}`;
+      } catch (err) {
+        outBlock.style.display = 'block';
+        outText.textContent = `Failed to load integration status: ${String(err)}`;
+      }
+    }
+
+    document.getElementById('slackConfigForm')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!currentTenant) { toast('Select tenant first', 'err'); return; }
+      const payload = {
+        webhook_url: document.getElementById('slack_webhook_url').value.trim(),
+        bot_token: document.getElementById('slack_bot_token').value.trim(),
+        default_channel_id: document.getElementById('slack_default_channel_id').value.trim(),
+        team_id: document.getElementById('slack_team_id').value.trim(),
+      };
+      const res = await fetch(
+        `${API}/api/tenants/${encodeURIComponent(currentTenant)}/integrations/slack`,
+        { method: 'PUT', headers: adminJsonHeaders(), body: JSON.stringify(payload) }
+      );
+      const data = await res.json();
+      if (!res.ok) { toast(`Slack save failed: ${data.detail || 'error'}`, 'err'); return; }
+      toast('Slack integration saved', 'ok');
+      document.getElementById('slack_bot_token').value = '';
+      document.getElementById('slack_webhook_url').value = '';
+      await refreshIntegrationStatus();
+    });
+
+    document.getElementById('jiraConfigForm')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!currentTenant) { toast('Select tenant first', 'err'); return; }
+      const payload = {
+        base_url: document.getElementById('jira_base_url').value.trim(),
+        email: document.getElementById('jira_email').value.trim(),
+        api_token: document.getElementById('jira_api_token').value.trim(),
+        project_key: document.getElementById('jira_project_key').value.trim(),
+        issue_type: document.getElementById('jira_issue_type').value.trim(),
+      };
+      const res = await fetch(
+        `${API}/api/tenants/${encodeURIComponent(currentTenant)}/integrations/jira`,
+        { method: 'PUT', headers: adminJsonHeaders(), body: JSON.stringify(payload) }
+      );
+      const data = await res.json();
+      if (!res.ok) { toast(`Jira save failed: ${data.detail || 'error'}`, 'err'); return; }
+      toast('Jira integration saved', 'ok');
+      document.getElementById('jira_api_token').value = '';
+      await refreshIntegrationStatus();
+    });
+
+    document.getElementById('btnTestSlack')?.addEventListener('click', async () => {
+      if (!currentTenant) { toast('Select tenant first', 'err'); return; }
+      const outBlock = document.getElementById('syncResultBlock');
+      const outText = document.getElementById('syncResultOut');
+      outBlock.style.display = 'block';
+      outText.textContent = `Testing Slack integration for tenant ${currentTenant}...`;
+      try {
+        const res = await fetch(
+          `${API}/api/tenants/${encodeURIComponent(currentTenant)}/integrations/slack/test`,
+          { method: 'POST', headers: { 'x-tenant-admin-key': localStorage.getItem('aura_admin_key') || '' } }
+        );
+        let data = {};
+        try { data = await res.json(); } catch (_) { data = { ok: false, detail: await res.text() }; }
+        outText.textContent = `Slack test result\n\n${JSON.stringify(data, null, 2)}`;
+        toast(data.ok ? `Slack: ${data.detail}` : `Slack test failed: ${data.detail || 'error'}`, data.ok ? 'ok' : 'err');
+      } catch (err) {
+        outText.textContent = `Slack test failed\n\n${String(err)}`;
+        toast(`Slack test failed: ${String(err)}`, 'err');
+      }
+    });
+
+    document.getElementById('btnTestJira')?.addEventListener('click', async () => {
+      if (!currentTenant) { toast('Select tenant first', 'err'); return; }
+      const outBlock = document.getElementById('syncResultBlock');
+      const outText = document.getElementById('syncResultOut');
+      outBlock.style.display = 'block';
+      outText.textContent = `Testing Jira integration for tenant ${currentTenant}...`;
+      try {
+        const res = await fetch(
+          `${API}/api/tenants/${encodeURIComponent(currentTenant)}/integrations/jira/test`,
+          { method: 'POST', headers: { 'x-tenant-admin-key': localStorage.getItem('aura_admin_key') || '' } }
+        );
+        let data = {};
+        try { data = await res.json(); } catch (_) { data = { ok: false, detail: await res.text() }; }
+        outText.textContent = `Jira test result\n\n${JSON.stringify(data, null, 2)}`;
+        toast(data.ok ? `Jira: ${data.detail}` : `Jira test failed: ${data.detail || 'error'}`, data.ok ? 'ok' : 'err');
+      } catch (err) {
+        outText.textContent = `Jira test failed\n\n${String(err)}`;
+        toast(`Jira test failed: ${String(err)}`, 'err');
+      }
+    });
+
     /* ═══ INIT ═══════════════════════════════════════════════════ */
     applyTranslations();
+    bootstrapRouteFromPath();
     </script>
   </body>
 </html>
+
+

@@ -99,10 +99,15 @@ test.describe("AURA API contract", () => {
     expect(Array.isArray(incident.notifications)).toBeTruthy();
     expect(incident.notifications[0].channel).toBe("team_communicator");
 
-    const resolveRes = await request.post(`${API_BASE_URL}/api/incidents/${incident.incident_id}/resolve`);
+    const resolveRes = await request.post(`${API_BASE_URL}/api/incidents/${incident.incident_id}/resolve`, {
+      data: {
+        resolution_notes: "Patched checkout coupon validation and added regression test coverage.",
+      },
+    });
     expect(resolveRes.ok()).toBeTruthy();
     const resolved = await resolveRes.json();
     expect(resolved.status).toBe("resolved");
+    expect(String(resolved.resolution_notes)).toContain("coupon validation");
     expect(resolved.notifications.some((n) => n.channel === "reporter_email")).toBeTruthy();
 
     const dashboardRes = await request.get(`${API_BASE_URL}/api/tenants/${tenant}/dashboard`);
@@ -227,7 +232,11 @@ test.describe("AURA API contract", () => {
     expect(submitRes.ok()).toBeTruthy();
     const incident = await submitRes.json();
 
-    const resolveRes = await request.post(`${API_BASE_URL}/api/incidents/${incident.incident_id}/resolve`);
+    const resolveRes = await request.post(`${API_BASE_URL}/api/incidents/${incident.incident_id}/resolve`, {
+      data: {
+        resolution_notes: "Reset failing dependency and documented remediation steps for on-call.",
+      },
+    });
     expect(resolveRes.ok()).toBeTruthy();
 
     const logsRes = await request.get(`${API_BASE_URL}/api/tenants/${tenant}/audit-logs?limit=50`);

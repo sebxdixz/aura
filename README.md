@@ -1,170 +1,53 @@
-# AURA: Automated Uptime & Resolution Agent
+# AURA (Uptime & Resolution Agent) 🚀
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Hackathon](https://img.shields.io/badge/Hackathon-AgentX-blue)](#)
-[![Docker](https://img.shields.io/badge/Docker-Mandatory-2496ED?logo=docker&logoColor=white)](#)
-
-> Submission for `#AgentXHackathon`.
->
-> AURA is a multi-tenant B2B SaaS platform for SRE incident triage. Instead of only routing tickets, AURA uses a dual-agent architecture to analyze incidents, enforce strict data schemas, and propose proactive root-cause fixes (Auto-Fix) before engineers begin manual triage.
+**AURA** is an advanced, multi-tenant Site Reliability Engineering (SRE) Agent designed to ingest incident reports, perform automated intelligent triage, and orchestrate resolution workflows. Built for the **AgentX Hackathon 2026**, AURA bridges the gap between incident creation and resolution by dynamically analyzing codebase context, deduping issues, extracting multimodal inputs, and securely communicating with tools like Jira and Slack.
 
 ---
 
-## Project Summary
+## 📖 Project Summary
 
-Incident reports in e-commerce often arrive with incomplete context and vague descriptions. AURA solves this by combining a guided intake experience with AI-powered triage and operational automation.
-
-When a user submits an incident (text + PDF/audio/image/log evidence):
-
-1. **Ingestor Agent** converts unstructured input into strict evidence JSON (Pydantic-ready).
-   - Optional live path: `gemini-2.5-flash` (via OpenRouter) extracts multimodal evidence from text/audio/pdf/image.
-2. **Analysis Agent** uses extracted evidence + code/document context (RAG) to build technical triage (`severity`, RCA, fix, runbook).
-3. **ReAct Agent** routes to tools (Jira/Slack via MCP or direct providers) and closes the loop with notifications.
+When an incident occurs, AURA acts as the first line of defense:
+1. **Ingest**: Receives reports via a brutalist, agency-grade UI supporting Multimodal inputs (Screenshots, PDFs, Audio, Text).
+2. **Retrieve Context (RAG)**: Dynamically runs Vector Semantic Search (`pgvector`) against the synchronized GitHub E-Commerce codebase to pinpoint the buggy code.
+3. **AI Triage**: Uses a Dual-Stage Orchestration pipeline (OpenRouter) to score severity mathematically, find the root cause, and propose CLI/code fixes.
+4. **Action (MCP)**: Utilizes the Anthropic **Model Context Protocol (MCP)** via a custom, secure Node.js HTTP bridge to orchestrate ticketing (Jira/Linear) and team alerts (Slack/Teams).
+5. **Insights**: Saves every token, cost (USD) and meta-usage into a robust PostgreSQL Audit Log, surfacing live metrics to a secure Administration Dashboard.
 
 ---
 
-## Architecture Overview
+## 🏗️ Architecture Overview
 
-AURA is designed for scale, safety, and precision.
+AURA is implemented as a containerized, decoupled microservice architecture ensuring true B2B scalability.
 
-- **Frontend Split by Role (Nginx):** 
-  - Admin Dashboard (`/`) protected by strict Tenant ID / Access Key login.
-  - Public Intake Portal (`/intake/{tenant}`) for end-users, locked to incident submission without admin access.
-- **Backend (FastAPI + Python):** tenant logic, AI agent orchestration, and REST API.
-- **MCP Bridge (Node.js):** adapter between AURA tool-calls and MCP servers (Jira + Slack).
-- **MCP HTTP Bridge (Node.js/Express):** a custom microservice acting as an HTTP-to-Stdio proxy, allowing the containerized FastAPI backend to natively connect with Atlassian and Slack Model Context Protocol (MCP) console servers `npx` binaries.
-- **Database (PostgreSQL):** tenant isolation, incident history, and metrics.
-- **Vector Store (pgvector on PostgreSQL):** code/document chunks for RAG retrieval.
-- **AI Layer (Dual-Agent System):**
-  - **Agent 1: Ingestor (LLM + Pydantic):** strict schema output, multimodal handling, guardrails.
-  - **Agent 2: ReAct Orchestrator:** tools for ticketing/notifications and Auto-Fix generation via MCP.
+- **Frontend (Nginx / Vanilla JS / CSS)**: Unified frontend server with route-level split: `"/"` welcome + onboarding, `"/dashboard"` for protected tenant admin, and `"/intake/{tenant}"` for public incident intake.
+- **Backend (FastAPI / Python 3.11)**: The core AI brain handling deduplication, PostgreSQL integration (`pgvector`), RAG GitHub cloning, and OpenRouter hybrid-LLM calls (`google/gemini-2.5-flash` for extraction + `openai/gpt-4o-mini` for ReAct).
+- **Tooling Proxy (Node.js MCP Bridge)**: Completely isolates external LLM execution from the system. It safely routes MCP tool calls via standard `stdio` to Anthropic's official `@modelcontextprotocol/server-slack` and `server-atlassian` without exposing environment security risks to the Python container.
+- **Database (PostgreSQL 16 + pgvector)**: Handles both Vector Storage for semantic code search, and standard relational storage for Multi-Tenant `IncidentRecords`, `TenantRecords`, and `AuditLogs` tracking.
 
 ---
 
-## Key Features
+## 🛠️ Setup Instructions
 
-- **Multi-tenant SaaS architecture:** each company gets an isolated workspace and unique incident URL.
-- **Strict structured output:** Pydantic-first pipeline for predictable, system-safe JSON.
-- **Proactive Auto-Fix:** root-cause hypotheses with code/command suggestions.
-- **Multimodal triage path:** text decoding + PDF extraction + audio transcription (live model mode).
-- **Two-stage LLM pipeline (optional):** extraction model + stronger analysis model for better incident reasoning quality.
-- **Guardrails:** input sanitization and safe tool usage patterns.
-- **Mockable integrations:** stable hackathon demos with ticketing/notifications in `MOCK_MODE`.
-- **Optional ReAct Ops mode:** OpenRouter plans actions, MCP tools execute Jira + Slack operations.
+> Note: For a detailed step-by-step, see [QUICKGUIDE.md](./QUICKGUIDE.md).
 
----
+### Prerequisites
+- Docker and Docker Compose installed.
+- Valid API Keys (OpenRouter OR OpenAI).
 
-## Current Implementation Status
+### To Run
+1. Clone this repository.
+2. Copy the `.env.example` file to create your own `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+3. Fill out the required LLM API keys (`OPENROUTER_API_KEY` or `OPENAI_API_KEY`) and your `TENANT_ADMIN_KEY`.
+4. Fire up the orchestration using Docker Compose:
+   ```bash
+   docker compose up --build
+   ```
+5. Access the platform:
+   - **Welcome / Onboarding**: `http://localhost:3000/`
+   - **Admin Dashboard**: `http://localhost:3000/dashboard`
+   - **Public Intake**: `http://localhost:3000/intake/{tenant}`
 
-- `web`: A monochrome Brutalist frontend divided by Nginx routes:
-  - Admin view (`index.html` at `/`) secured by a Tenant Login wrapper.
-  - User intake (`intake.html` at `/intake/{tenant}`) completely isolated from dashboard code.
-- `mcp-bridge`: Node.js Express server spawning `mcp-server-slack` and `mcp-server-atlassian` as child processes, converting HTTP JSON-RPC payloads to Stdio formatting for the orchestrator.
-- File allowlist includes `text/plain`, `application/pdf`, image formats, and common audio types.
-- `api` E2E flow:
-  - `POST /api/incidents/submit`
-  - `POST /api/incidents/{incident_id}/resolve`
-  - `GET /api/incidents`
-  - `GET /api/incidents/{incident_id}`
-  - `GET /api/tenants/{tenant_id}/dashboard`
-- Triage output includes RCA and Auto-Fix proposal:
-  - `root_cause_analysis`
-  - `proposed_fix`
-  - `proposed_cli_command`
-- Triage output also includes:
-  - `severity_score`
-  - `severity_rationale`
-  - `runbook_suggestions`
-  - dedup metadata (`is_duplicate`, `duplicate_of_incident_id`, `dedup_confidence`)
-  - model execution marker (`llm_mode`: mock/live/fallback)
-- Structured observability through logs and `GET /metrics`.
-- RAG endpoints:
-  - `GET /api/rag/status?tenant_id=<tenant>`
-  - `POST /api/rag/reindex?tenant_id=<tenant>` (requires `x-tenant-admin-key`)
-  - `POST /api/rag/github-sync` (direct GitHub -> vector DB; no clone; tenant admin only)
-- Integrations include retry + fallback strategy (ticketing, communicator, reporter email).
-- MCP bridge service included in Docker Compose for Jira/Slack MCP tool dispatch.
-- PostgreSQL bootstrap schema under `db/init/001_schema.sql`.
-- Playwright API E2E suite available via `npm run test:e2e`.
-
----
-
-## Setup and Quick Start
-
-For full instructions, see [QUICKGUIDE.md](./QUICKGUIDE.md).
-
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/your-username/aura-sre-agent.git
-cd aura-sre-agent
-```
-
-2. **Configure environment**
-
-```bash
-cp .env.example .env
-# Fill in API keys and integration settings (OpenAI/OpenRouter, Jira, Slack, etc.)
-```
-
-Optional two-stage multimodal triage:
-
-```bash
-MULTIMODAL_PIPELINE=openrouter_two_stage
-OPENROUTER_API_KEY=<your_key>
-OPENROUTER_MULTIMODAL_MODEL=google/gemini-2.5-flash
-OPENROUTER_ANALYSIS_MODEL=<stronger_model_on_openrouter>
-```
-
-3. **Run with Docker Compose**
-
-```bash
-docker compose up --build
-```
-
-4. **Optional: swap sample codebase with a real e-commerce repository**
-
-- Replace content under `./ecommerce_repo` (or change `ECOMMERCE_CODEBASE_PATH` mount target).
-- Trigger reindex:
-
-```bash
-curl -X POST http://localhost:8000/api/rag/reindex
-```
-
-5. **Open the app**
-
-5. **Open the app**
-
-- **Frontend / Admins:** `http://localhost` (or the mapped Docker port, e.g. `localhost:3000`)
-- **Frontend / Public Intake:** `http://localhost/intake/{tenant_id}`
-- **Backend API docs:** `http://localhost:8000/docs`
-- **MCP Bridge:** Runs internally on port `8080` (not exposed directly to users).
-
----
-
-## Hackathon Documentation
-
-To comply with the AgentXHackathon deliverables, the repository includes (or should include):
-
-- `README.md`
-- `AGENTS_USE.md`
-- `SCALING.md`
-- `QUICKGUIDE.md`
-- `.env.example`
-- `docker-compose.yml`
-- `LICENSE` (MIT)
-
----
-
-## Demo Video
-
-Watch the full end-to-end flow here:
-
-- YouTube: `[link pending]`
-- Tag: `#AgentXHackathon`
-
----
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](./LICENSE).
+*(For full documentation, please review all `.md` files included in the repository).*

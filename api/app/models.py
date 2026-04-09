@@ -31,6 +31,7 @@ class TriageOutput(BaseModel):
     proposed_fix: str
     proposed_cli_command: str
     llm_mode: str
+    llm_usage: dict = Field(default_factory=dict)
 
 
 class TicketRecord(BaseModel):
@@ -55,6 +56,7 @@ class IncidentRecord(BaseModel):
     status: Literal["open", "resolved"] = "open"
     created_at: str = Field(default_factory=utc_now_iso)
     resolved_at: str | None = None
+    resolution_notes: str | None = None
     file_meta: FileMeta | None = None
     triage: TriageOutput
     ticket: TicketRecord
@@ -95,3 +97,37 @@ class TenantInsightsSummary(BaseModel):
     medium_incidents: int
     high_incidents: int
     critical_incidents: int
+
+
+class IntegrationConfigStatus(BaseModel):
+    provider: Literal["slack", "jira"]
+    configured: bool
+    configured_fields: list[str] = Field(default_factory=list)
+    updated_at: str | None = None
+
+
+class TenantIntegrationsStatus(BaseModel):
+    tenant_id: str
+    slack: IntegrationConfigStatus
+    jira: IntegrationConfigStatus
+
+
+class SlackIntegrationPayload(BaseModel):
+    webhook_url: str | None = None
+    bot_token: str | None = None
+    team_id: str | None = None
+    default_channel_id: str | None = None
+
+
+class JiraIntegrationPayload(BaseModel):
+    base_url: str | None = None
+    email: str | None = None
+    api_token: str | None = None
+    project_key: str | None = None
+    issue_type: str | None = None
+
+
+class IntegrationTestResult(BaseModel):
+    provider: Literal["slack", "jira"]
+    ok: bool
+    detail: str

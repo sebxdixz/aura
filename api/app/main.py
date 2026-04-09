@@ -16,7 +16,11 @@ from .models import (
     AuditLogRecord,
     FileMeta,
     IncidentRecord,
+    IntegrationTestResult,
+    JiraIntegrationPayload,
     NotificationRecord,
+    SlackIntegrationPayload,
+    TenantIntegrationsStatus,
     TenantDashboard,
     TenantInsightsSummary,
     TenantRecord,
@@ -36,8 +40,14 @@ from .services import (
     resolve_incident,
     run_triage,
     save_incident,
+    save_jira_integration,
+    save_slack_integration,
     tenant_dashboard,
+    test_jira_integration,
+    test_slack_integration,
+    integration_status,
 )
+from . import repository as repo
 
 app = FastAPI(title="AURA API", version="0.3.0")
 
@@ -60,10 +70,15 @@ class GithubSyncPayload(BaseModel):
     branch: str | None = None
 
 
+class ResolveIncidentPayload(BaseModel):
+    resolution_notes: str
+
+
 @app.on_event("startup")
 def startup_rag_bootstrap() -> None:
     db = SessionLocal()
     try:
+        repo.ensure_integrations_schema(db)
         status = rag_status(db)
         if auto_index_enabled():
             log_event("rag_index_started", repo_name=status["repo_name"])
@@ -202,13 +217,14 @@ async def submit_incident(
         attachment_bytes=file_bytes,
         db=db,
     )
-    log_event("incident_triaged", incident_id=incident_id, severity=triage.severity, service=triage.affected_service)
+    log_event("incident_triaged", incident_id=incident_id, severity=triage.severity, service=triage.affected_service, llm_usage=triage.llm_usage)
 
     ticket = create_ticket(
         incident_id=incident_id,
         triage=triage,
         tenant_id=tenant_id,
         description=description,
+        db=db,
     )
     team_notification = notify_team(
         incident_id=incident_id,
@@ -217,6 +233,7 @@ async def submit_incident(
         tenant_id=tenant_id,
         reporter_email=reporter_email,
         description=description,
+        db=db,
     )
 
     incident = IncidentRecord(
@@ -236,9 +253,14 @@ async def submit_incident(
 @app.post("/api/incidents/{incident_id}/resolve", response_model=IncidentRecord)
 def api_resolve_incident(
     incident_id: str,
+    payload: ResolveIncidentPayload,
     db: Session = Depends(get_db),
 ) -> IncidentRecord:
-    incident = resolve_incident(db, incident_id)
+    notes = payload.resolution_notes.strip()
+    if len(notes) < 10:
+        raise HTTPException(status_code=400, detail="resolution_notes must be at least 10 characters")
+
+    incident = resolve_incident(db, incident_id, resolution_notes=notes)
     if not incident:
         raise HTTPException(status_code=404, detail="incident not found")
     return incident
@@ -370,6 +392,90 @@ def _assert_tenant_admin(tenant_id: str, provided_key: str | None) -> None:
         return
     raise HTTPException(status_code=403, detail="invalid tenant admin credentials")
 
+
+@app.get("/api/tenants/{tenant_id}/integrations", response_model=TenantIntegrationsStatus)
+def api_tenant_integrations_status(
+    tenant_id: str,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> TenantIntegrationsStatus:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    return integration_status(db, tenant_id)
+
+
+@app.put("/api/tenants/{tenant_id}/integrations/slack")
+def api_save_slack_integration(
+    tenant_id: str,
+    payload: SlackIntegrationPayload,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    try:
+        save_slack_integration(db, tenant_id=tenant_id, payload=payload.model_dump())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.put("/api/tenants/{tenant_id}/integrations/jira")
+def api_save_jira_integration(
+    tenant_id: str,
+    payload: JiraIntegrationPayload,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    try:
+        save_jira_integration(db, tenant_id=tenant_id, payload=payload.model_dump())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.post("/api/tenants/{tenant_id}/integrations/slack/test", response_model=IntegrationTestResult)
+def api_test_slack_integration(
+    tenant_id: str,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> IntegrationTestResult:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    try:
+        ok, detail = test_slack_integration(db, tenant_id=tenant_id)
+    except RuntimeError as exc:
+        ok, detail = False, str(exc)
+    return IntegrationTestResult(provider="slack", ok=ok, detail=detail)
+
+
+@app.post("/api/tenants/{tenant_id}/integrations/jira/test", response_model=IntegrationTestResult)
+def api_test_jira_integration(
+    tenant_id: str,
+    create_issue: bool = True,
+    x_tenant_admin_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> IntegrationTestResult:
+    tenant = get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    _assert_tenant_admin(tenant_id, x_tenant_admin_key)
+    try:
+        ok, detail = test_jira_integration(db, tenant_id=tenant_id, create_issue=create_issue)
+    except RuntimeError as exc:
+        ok, detail = False, str(exc)
+    return IntegrationTestResult(provider="jira", ok=ok, detail=detail)
+
 @app.post("/api/auth/verify")
 def api_auth_verify(
     tenant_id: str = Header(..., alias="x-tenant-id"),
@@ -377,4 +483,3 @@ def api_auth_verify(
 ) -> dict:
     _assert_tenant_admin(tenant_id, x_tenant_admin_key)
     return {"status": "ok", "tenant_id": tenant_id}
-
