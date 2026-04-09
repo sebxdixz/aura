@@ -1,201 +1,295 @@
-# AURA: Automated Uptime & Resolution Agent
+# AURA
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Hackathon](https://img.shields.io/badge/Hackathon-AgentX-blue)](#)
-[![Docker](https://img.shields.io/badge/Docker-Mandatory-2496ED?logo=docker&logoColor=white)](#)
+AURA is an incident intake and triage system for e-commerce operations.
 
-> Submission for `#AgentXHackathon`.
->
-> AURA is a multi-tenant B2B SaaS platform for SRE incident triage. Instead of only routing tickets, AURA uses a dual-agent architecture to analyze incidents, enforce strict data schemas, and propose proactive root-cause fixes (Auto-Fix) before engineers begin manual triage.
+It accepts incident reports with:
 
----
+- text only
+- text + screenshot
+- text + log
 
-## Project Summary
+It then turns that report into an operational output:
 
-Incident reports in e-commerce often arrive with incomplete context and vague descriptions. AURA solves this by combining a guided intake experience with AI-powered triage and operational automation.
+- structured triage
+- severity and routing
+- repository-grounded technical context
+- multi-ticket correlation and recurrence
+- ticket creation
+- team notification
+- reporter notification on resolution
 
-When a user submits an incident (text + PDF/audio/image/log evidence):
+## What Problem AURA Solves
 
-1. **Ingestor Agent** converts unstructured input into strict evidence JSON (Pydantic-ready).
-   - Optional live path: `gemini-2.5-flash` (via OpenRouter) extracts multimodal evidence from text/audio/pdf/image.
-2. **Analysis Agent** uses extracted evidence + code/document context (RAG) to build technical triage (`severity`, RCA, fix, runbook).
-3. **ReAct Agent** routes to tools (Jira/Slack via MCP or direct providers) and closes the loop with notifications.
+Incident reports are usually incomplete, noisy, and hard to route quickly.
 
----
+AURA improves that by:
 
-## Architecture Overview
+- extracting evidence from attachments
+- grounding analysis in code/docs via RAG
+- producing explainable triage output
+- separating fast intake from heavy background processing
+- watching ticket state until resolution
 
-AURA is designed for scale, safety, and precision.
+The goal is not to be a generic chatbot.
+The goal is to be a defendable incident pipeline.
 
-- **Frontend Split by Role (Nginx):** 
-  - Admin Dashboard (`/`) protected by strict Tenant ID / Access Key login.
-  - Public Intake Portal (`/intake/{tenant}`) for end-users, locked to incident submission without admin access.
-- **Backend (FastAPI + Python):** tenant logic, AI agent orchestration, and REST API.
-- **Worker (Python):** asynchronous incident processing, ticket status polling, and reporter notification jobs.
-- **MCP Bridge (Node.js):** adapter between AURA tool-calls and MCP servers (Jira + Slack).
-- **MCP HTTP Bridge (Node.js/Express):** a custom microservice acting as an HTTP-to-Stdio proxy, allowing the containerized FastAPI backend to natively connect with Atlassian and Slack Model Context Protocol (MCP) console servers `npx` binaries.
-- **Database (PostgreSQL):** tenant isolation, incident history, and metrics.
-- **Vector Store (pgvector on PostgreSQL):** code/document chunks for RAG retrieval.
-- **AI Layer (Dual-Agent System):**
-  - **Agent 1: Ingestor (LLM + Pydantic):** strict schema output, multimodal handling, guardrails.
-  - **Agent 2: ReAct Orchestrator:** tools for ticketing/notifications and Auto-Fix generation via MCP.
+## Core Flow
 
----
+1. User submits an incident through the intake UI.
+2. API validates input and stores the incident immediately.
+3. API enqueues async incident processing.
+4. Worker processes attachment, triage, RAG, multi-ticket intelligence, ticketing, and team notify.
+5. Dashboard shows the commander-style incident view.
+6. Worker polls ticket status.
+7. If the external/mock ticket resolves, AURA resolves the local incident and notifies the original reporter.
 
-## Key Features
+## Architecture
 
-- **Multi-tenant SaaS architecture:** each company gets an isolated workspace and unique incident URL.
-- **Strict structured output:** Pydantic-first pipeline for predictable, system-safe JSON.
-- **Proactive Auto-Fix:** root-cause hypotheses with code/command suggestions.
-- **Multimodal triage path:** text decoding + PDF extraction + audio transcription (live model mode).
-- **Two-stage LLM pipeline (optional):** extraction model + stronger analysis model for better incident reasoning quality.
-- **Guardrails:** input sanitization and safe tool usage patterns.
-- **Mockable integrations:** stable hackathon demos with ticketing/notifications in `MOCK_MODE`.
-- **Optional ReAct Ops mode:** OpenRouter plans actions, MCP tools execute Jira + Slack operations.
+### Services
 
----
+- `web`
+  - public intake portal
+- `web_dashboard`
+  - operations dashboard
+- `api`
+  - FastAPI entrypoint, validation, persistence, orchestration start
+- `worker`
+  - async incident processing and ticket watcher
+- `db`
+  - PostgreSQL + pgvector
+- `mcp_bridge`
+  - MCP bridge for Jira/Slack tool execution
+- `jaeger`
+  - optional tracing UI
 
-## Current Implementation Status
+### Why the Worker Matters
 
-- `web`: A monochrome Brutalist frontend divided by Nginx routes:
-  - Admin view (`index.html` at `/`) secured by a Tenant Login wrapper.
-  - User intake (`intake.html` at `/intake/{tenant}`) completely isolated from dashboard code.
-- `mcp-bridge`: Node.js Express server spawning `mcp-server-slack` and `mcp-server-atlassian` as child processes, converting HTTP JSON-RPC payloads to Stdio formatting for the orchestrator.
-- File allowlist includes `text/plain`, `application/pdf`, image formats, and common audio types.
-- `api` E2E flow:
-  - `POST /api/incidents/submit`
-  - `POST /api/incidents/{incident_id}/resolve`
-  - `GET /api/incidents`
-  - `GET /api/incidents/{incident_id}`
-  - `GET /api/tenants/{tenant_id}/dashboard`
-- Triage output includes RCA and Auto-Fix proposal:
-  - `root_cause_analysis`
-  - `proposed_fix`
-  - `proposed_cli_command`
-- Triage output also includes:
-  - `severity_score`
-  - `severity_rationale`
-  - `runbook_suggestions`
-  - dedup metadata (`is_duplicate`, `duplicate_of_incident_id`, `dedup_confidence`)
-  - model execution marker (`llm_mode`: mock/live/fallback)
-- Structured observability through logs and `GET /metrics`.
-- Asynchronous processing with a persisted job queue and separate worker service.
-- Polling-based resolution watcher for external/mock ticket status sync. Webhooks are intentionally left as a next-step extension.
-- OpenTelemetry tracing with console exporter by default and optional OTLP export to Jaeger.
-- RAG endpoints:
-  - `GET /api/rag/status?tenant_id=<tenant>`
-  - `POST /api/rag/reindex?tenant_id=<tenant>` (requires `x-tenant-admin-key`)
-  - `POST /api/rag/github-sync` (direct GitHub -> vector DB; no clone; tenant admin only)
-- Integrations include retry + fallback strategy (ticketing, communicator, reporter email).
-- MCP bridge service included in Docker Compose for Jira/Slack MCP tool dispatch.
-- PostgreSQL bootstrap schema under `db/init/001_schema.sql`.
-- Playwright API E2E suite available via `npm run test:e2e`.
+The worker exists so that `submit` is fast and heavy work is retryable.
 
----
+Without it, one request would block on:
 
-## Setup and Quick Start
+- attachment processing
+- triage
+- RAG
+- ticket creation
+- team notification
 
-For full instructions, see [QUICKGUIDE.md](./QUICKGUIDE.md).
+With it:
 
-1. **Clone the repository**
+- submit is quick
+- failures are isolated
+- retries are explicit
+- observability covers jobs as first-class operations
 
-```bash
-git clone https://github.com/your-username/aura-sre-agent.git
-cd aura-sre-agent
-```
+## Triage Design
 
-2. **Configure environment**
+AURA uses a layered triage pipeline instead of a single freeform LLM call.
+
+### Stages
+
+1. input normalization
+2. attachment evidence extraction
+3. structured entity extraction
+4. repository/document retrieval
+5. severity scoring
+6. routing decision
+7. multi-ticket intelligence
+8. ticket payload generation
+9. validation and fallback
+
+### Why This Matters
+
+This gives:
+
+- more control
+- better explainability
+- clearer observability
+- safer multimodal handling
+
+## Multi-Ticket Intelligence
+
+AURA does not only classify a single incident in isolation.
+
+It also detects:
+
+- related incidents
+- duplicates
+- recurrence over 7d/30d
+- cluster membership
+- scope implications from repeated patterns
+
+This influences:
+
+- explainability
+- scope assessment
+- operator context
+- ticket payload
+
+## Observability
+
+AURA has two layers of observability:
+
+### 1. Custom operational observability
+
+- structured logs
+- metrics endpoint
+- audit logs persisted to PostgreSQL
+
+### 2. Formal tracing
+
+- OpenTelemetry instrumentation
+- console exporter by default
+- optional OTLP export to Jaeger
+
+Examples of traced stages:
+
+- `api.submit_incident`
+- `worker.process_incident`
+- `triage.run`
+- `rag.retrieve_context`
+- `ticket.create`
+- `notify.team`
+- `worker.sync_ticket_status`
+- `worker.notify_reporter`
+
+## Resolution Watcher
+
+Current implementation is intentionally:
+
+- polling-first
+
+This means:
+
+- worker periodically syncs external/mock ticket status
+- state is mapped into internal incident state
+- if ticket becomes resolved, AURA resolves locally and notifies the reporter
+
+Webhook support is intentionally left as the next extension, not forgotten.
+
+## Mock vs Real
+
+### Demo-safe defaults
+
+By default:
+
+- ticketing is mock
+- communicator is mock
+- reporter email is mock
+- watcher logic is real but can use mock ticket state
+- tracing is real
+
+### Real integrations
+
+You can enable real providers through `.env`:
+
+- Jira
+- Slack
+- OpenRouter/OpenAI model paths
+- MCP-backed operations
+
+## Tech Stack
+
+- Frontend: HTML + JS + Nginx
+- API: FastAPI + Pydantic + SQLAlchemy
+- Worker: Python process with persisted job queue
+- Database: PostgreSQL + pgvector
+- Tracing: OpenTelemetry
+- Trace viewer: Jaeger
+- Optional providers: Jira, Slack, OpenAI/OpenRouter, MCP bridge
+
+## How to Run
+
+### 1. Copy environment
 
 ```bash
 cp .env.example .env
-# Fill in API keys and integration settings (OpenAI/OpenRouter, Jira, Slack, etc.)
 ```
 
-Optional two-stage multimodal triage:
+### 2. Choose trace exporter mode
 
-```bash
-MULTIMODAL_PIPELINE=openrouter_two_stage
-OPENROUTER_API_KEY=<your_key>
-OPENROUTER_MULTIMODAL_MODEL=google/gemini-2.5-flash
-OPENROUTER_ANALYSIS_MODEL=<stronger_model_on_openrouter>
+In `.env`:
+
+```env
+OTEL_EXPORTER_MODE=console
 ```
 
-3. **Run with Docker Compose**
+or:
+
+```env
+OTEL_EXPORTER_MODE=otlp
+```
+
+### 3. Start the stack
 
 ```bash
 docker compose up --build
 ```
 
-Optional tracing UI:
+### 4. Open the services
 
-- Keep `OTEL_EXPORTER_MODE=console` for simple local trace output in logs.
-- Set `OTEL_EXPORTER_MODE=otlp` to export traces to Jaeger.
-- Open Jaeger at `http://localhost:16686`.
+- Intake: [http://localhost:3000/intake/hackathon-demo](http://localhost:3000/intake/hackathon-demo)
+- Dashboard: [http://localhost:3001/?tenant_id=hackathon-demo](http://localhost:3001/?tenant_id=hackathon-demo)
+- API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Metrics: [http://localhost:8000/metrics](http://localhost:8000/metrics)
+- Jaeger: [http://localhost:16686](http://localhost:16686)
 
-4. **Optional: swap sample codebase with a real e-commerce repository**
+For a more step-by-step runbook, see [QUICKGUIDE.md](./QUICKGUIDE.md).
 
-- Replace content under `./ecommerce_repo` (or change `ECOMMERCE_CODEBASE_PATH` mount target).
-- Trigger reindex:
+## Demo Script
 
-```bash
-curl -X POST http://localhost:8000/api/rag/reindex
+### Best incident for demo
+
+Use a checkout/payment case with clear backend failure evidence.
+
+Description:
+
+```text
+Customers cannot complete payment in checkout. We are seeing HTTP 500 in production after clicking Pay. No workaround confirmed yet.
 ```
 
-5. **Open the app**
+Attachment:
 
-5. **Open the app**
+```text
+2026-04-09T20:10:00Z ERROR checkout-service payment failed HTTP 500
+2026-04-09T20:10:01Z ERROR payment-service gateway timeout
+environment=production
+```
 
-- **Frontend / Admins:** `http://localhost` (or the mapped Docker port, e.g. `localhost:3000`)
-- **Frontend / Public Intake:** `http://localhost/intake/{tenant_id}`
-- **Backend API docs:** `http://localhost:8000/docs`
-- **Jaeger UI (optional):** `http://localhost:16686`
-- **MCP Bridge:** Runs internally on port `8080` (not exposed directly to users).
+### What to show
 
----
+1. fast async submit
+2. worker-driven completion
+3. score breakdown
+4. routing decision
+5. attachment evidence
+6. RAG evidence
+7. related incidents / recurrence if present
+8. Jaeger trace
 
-## Async Processing and Resolution Watcher
+## Key Delivery Documents
 
-- `POST /api/incidents/submit` now stores the incident and enqueues `process_incident` for the worker.
-- Jobs persist with lifecycle states `queued`, `running`, `completed`, and `failed`, plus `attempts`, `max_attempts`, `run_after`, and `last_error`.
-- Incident processing states are:
-  - `submitted`
-  - `processing`
-  - `triaged`
-  - `ticketed`
-  - `resolved`
-  - `failed`
-- Resolution watcher is implemented with polling first:
-  - worker schedules `sync_ticket_status`
-  - fetches provider/mock status
-  - maps external status into internal state
-  - resolves the incident locally and enqueues reporter notification exactly once
-- Webhook-based resolution is intentionally documented as a future extension, not omitted by accident.
+- [AGENTS_USE.md](./AGENTS_USE.md)
+- [QUICKGUIDE.md](./QUICKGUIDE.md)
+- [SCALING.md](./SCALING.md)
+- [.env.example](./.env.example)
+- [docker-compose.yml](./docker-compose.yml)
 
----
+## Validation
 
-## Hackathon Documentation
+Backend compilation:
 
-To comply with the AgentXHackathon deliverables, the repository includes (or should include):
+```bash
+python -m compileall api/app tests
+```
 
-- `README.md`
-- `AGENTS_USE.md`
-- `SCALING.md`
-- `QUICKGUIDE.md`
-- `.env.example`
-- `docker-compose.yml`
-- `LICENSE` (MIT)
+Optional Playwright API E2E:
 
----
-
-## Demo Video
-
-Watch the full end-to-end flow here:
-
-- YouTube: `[link pending]`
-- Tag: `#AgentXHackathon`
-
----
+```bash
+npm install
+npx playwright install chromium
+npm run test:e2e
+```
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).

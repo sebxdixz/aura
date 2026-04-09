@@ -331,6 +331,16 @@ def save_incident_links(
     source_incident_id: str,
     links: list[IncidentLinkRecord],
 ) -> None:
+    db.execute(
+        text(
+            """
+            DELETE FROM incident_links
+            WHERE tenant_id = :tid
+              AND source_incident_id = :source_iid
+            """
+        ),
+        {"tid": tenant_id, "source_iid": source_incident_id},
+    )
     for link in links:
         db.execute(
             text(

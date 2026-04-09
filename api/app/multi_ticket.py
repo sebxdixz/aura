@@ -23,18 +23,16 @@ def analyze_multi_ticket_intelligence(db: Session, incident: IncidentRecord) -> 
 
     similarity_results: list[IncidentSimilarityResult] = []
     for candidate in candidates.recent:
-        result = score_incident_similarity(current_fp, build_incident_fingerprint(candidate))
+        candidate_fp = build_incident_fingerprint(candidate)
+        result = score_incident_similarity(current_fp, candidate_fp)
+        result = _normalize_relationship_for_candidate(result, candidate_fp)
         if result.relationship_type != "unrelated":
             similarity_results.append(result)
 
     is_duplicate, duplicate_of, dedup_confidence = select_primary_duplicate(similarity_results)
     recurrence = detect_recurrence(current_fp, candidates.historical)
     cluster_id = assign_cluster_id(current_fp, similarity_results, recurrence)
-    related_ids = [
-        result.compared_incident_id
-        for result in similarity_results
-        if result.relationship_type in {"duplicate", "strongly_related"}
-    ]
+    related_ids = _top_related_ids(similarity_results)
     scope_assessment = infer_scope_assessment(
         incident=incident,
         is_duplicate=is_duplicate,
@@ -66,6 +64,7 @@ def build_incident_fingerprint(incident: IncidentRecord) -> IncidentFingerprint:
     return IncidentFingerprint(
         incident_id=incident.incident_id,
         tenant_id=incident.tenant_id,
+        status=incident.status,
         affected_service=incident.triage.affected_service,
         affected_surface=incident.triage.affected_surface,
         incident_type=incident.triage.incident_type,
@@ -160,7 +159,8 @@ def detect_recurrence(fingerprint: IncidentFingerprint, historical_incidents: li
     for incident in historical_incidents:
         candidate_fp = build_incident_fingerprint(incident)
         similarity = score_incident_similarity(fingerprint, candidate_fp)
-        if similarity.relationship_type == "unrelated":
+        similarity = _normalize_relationship_for_candidate(similarity, candidate_fp)
+        if similarity.relationship_type not in {"duplicate", "strongly_related"}:
             continue
         created_at = _parse_datetime(candidate_fp.created_at)
         matched_times.append(created_at)
@@ -214,7 +214,7 @@ def infer_scope_assessment(
         return "duplicate_report_linked_to_existing_incident"
     if strong_count >= 3 or recurrence.recurrence_count_7d >= 3:
         return "likely_multi_user"
-    if recurrence.pattern_detected:
+    if recurrence.pattern_detected or recurrence.recurrence_count_30d >= 2:
         return "ongoing_recurring_pattern"
     if strong_count >= 1:
         return "localized_repeat"
@@ -235,7 +235,7 @@ def build_multi_ticket_reasoning(
         parts.append(f"Marked as duplicate of {duplicate_of}.")
     strong = [result for result in related_results if result.relationship_type in {"duplicate", "strongly_related"}]
     if strong:
-        parts.append(f"Linked to {len(strong)} similar incidents in the recent window.")
+        parts.append(f"Linked to {len(strong)} strongly related incidents in the recent window.")
     if recurrence.recurrence_count_30d:
         parts.append(f"Recurring pattern seen {recurrence.recurrence_count_30d} times in the last 30 days.")
     if cluster_id:
@@ -257,6 +257,36 @@ def to_link_records(analysis: MultiTicketAnalysisResult) -> list[IncidentLinkRec
         for result in analysis.related_links
         if result.relationship_type in {"duplicate", "strongly_related", "weakly_related"}
     ]
+
+
+def _normalize_relationship_for_candidate(
+    result: IncidentSimilarityResult,
+    candidate_fp: IncidentFingerprint,
+) -> IncidentSimilarityResult:
+    if result.relationship_type == "duplicate" and candidate_fp.status != "open":
+        result.relationship_type = "strongly_related"
+        result.reasoning = (
+            f"{result.reasoning.rstrip('.')} Candidate incident is not open, so duplicate was downgraded to strongly_related."
+        )
+    return result
+
+
+def _top_related_ids(results: list[IncidentSimilarityResult]) -> list[str]:
+    ordered = sorted(
+        [result for result in results if result.relationship_type in {"duplicate", "strongly_related"}],
+        key=lambda item: item.similarity_score,
+        reverse=True,
+    )
+    seen: set[str] = set()
+    related_ids: list[str] = []
+    for result in ordered:
+        if result.compared_incident_id in seen:
+            continue
+        seen.add(result.compared_incident_id)
+        related_ids.append(result.compared_incident_id)
+        if len(related_ids) >= 5:
+            break
+    return related_ids
 
 
 def _load_candidates(db: Session, incident: IncidentRecord) -> _CandidateWindow:

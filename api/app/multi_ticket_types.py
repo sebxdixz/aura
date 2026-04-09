@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class IncidentFingerprint(BaseModel):
     incident_id: str
     tenant_id: str
+    status: str = "open"
     affected_service: str
     affected_surface: str | None = None
     incident_type: str | None = None
