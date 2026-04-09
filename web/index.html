@@ -437,25 +437,55 @@
         font-size: 13px;
       }
 
-      /* ═══ SEV BADGES — monochrome only ══════════════════════════ */
       .sev {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         font-family: var(--font-mono);
-        font-size: 9px;
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: 1.5px;
+        letter-spacing: 1px;
         text-transform: uppercase;
-        padding: 3px 8px;
+        padding: 7px 12px;
+        border-radius: 999px;
         border: 1px solid var(--g300);
-        color: var(--g600);
-        background: transparent;
         white-space: nowrap;
       }
 
-      .sev-critical { border-color: var(--black); color: var(--black); background: var(--g100); }
-      .sev-high     { border-color: var(--g600);  color: var(--g700); }
-      .sev-medium   { border-color: var(--g400);  color: var(--g500); }
-      .sev-low      { border-color: var(--g300);  color: var(--g400); }
+      .sev::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0.85;
+        flex-shrink: 0;
+      }
+
+      .sev-critical { background: #FEE2E2; color: #B91C1C; border-color: #FCA5A5; }
+      .sev-high     { background: #FFEDD5; color: #C2410C; border-color: #FDBA74; }
+      .sev-medium   { background: #FEF3C7; color: #B45309; border-color: #FCD34D; }
+      .sev-low      { background: #DCFCE7; color: #166534; border-color: #86EFAC; }
+
+      .severity-display {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .severity-score {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.6px;
+        color: var(--g700);
+        text-transform: uppercase;
+      }
+
+      .severity-shell.severity-critical { border-left: 4px solid #FCA5A5; }
+      .severity-shell.severity-high { border-left: 4px solid #FDBA74; }
+      .severity-shell.severity-medium { border-left: 4px solid #FCD34D; }
+      .severity-shell.severity-low { border-left: 4px solid #86EFAC; }
 
       .status-badge {
         display: inline-block;
@@ -710,7 +740,131 @@
         letter-spacing: 1px;
       }
 
-      .result-sections { display: flex; flex-direction: column; }
+      .result-sections {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 18px;
+        background: #fcfbf8;
+      }
+
+      .result-hero,
+      .result-group {
+        border: 1px solid var(--g150);
+        background: var(--white);
+      }
+
+      .result-hero {
+        padding: 22px;
+        background: linear-gradient(180deg, #fff 0%, #f8f5ee 100%);
+      }
+
+      .hero-topline {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: var(--g500);
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .hero-grid {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .hero-headline {
+        font-size: 32px;
+        line-height: 0.95;
+        letter-spacing: -1.5px;
+        text-transform: uppercase;
+        font-weight: 900;
+        margin-bottom: 10px;
+        color: var(--black);
+      }
+
+      .hero-subcopy {
+        font-size: 14px;
+        color: var(--g700);
+        line-height: 1.65;
+        max-width: 720px;
+      }
+
+      .hero-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      .hero-chip {
+        border: 1px solid var(--g200);
+        background: var(--g50);
+        color: var(--g700);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        padding: 7px 10px;
+      }
+
+      .group-head {
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--g150);
+        background: var(--g50);
+      }
+
+      .group-title {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: var(--g500);
+        text-transform: uppercase;
+      }
+
+      .group-body { padding: 16px; }
+
+      .decision-grid,
+      .insight-grid,
+      .pattern-grid,
+      .action-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .mini-panel {
+        padding: 14px;
+        border: 1px solid var(--g150);
+        background: #fcfbf8;
+      }
+
+      .mini-panel.wide { grid-column: 1 / -1; }
+
+      .mini-panel-label {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 2px;
+        color: var(--g400);
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .mini-panel-value {
+        font-size: 13px;
+        color: var(--g700);
+        line-height: 1.6;
+      }
+
+      .mini-panel-value.strong {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.2px;
+        color: var(--black);
+      }
 
       .result-row {
         display: grid;
@@ -885,6 +1039,10 @@
         box-shadow: 0 8px 32px rgba(0,0,0,0.15);
       }
 
+      .modal.modal-wide {
+        width: min(760px, 100%);
+      }
+
       .modal-header {
         padding: 20px 24px;
         border-bottom: 1px solid var(--g150);
@@ -929,6 +1087,56 @@
         background: var(--g50);
       }
 
+      .resolve-context {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .resolve-card {
+        border: 1px solid var(--g150);
+        background: #fcfbf8;
+        padding: 14px;
+      }
+
+      .resolve-card.wide {
+        grid-column: 1 / -1;
+      }
+
+      .resolve-label {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+        color: var(--g400);
+        margin-bottom: 8px;
+      }
+
+      .resolve-value {
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--g700);
+      }
+
+      .resolve-textarea {
+        width: 100%;
+        min-height: 180px;
+        resize: vertical;
+        border: 1px solid var(--g200);
+        background: var(--white);
+        padding: 14px 16px;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        line-height: 1.65;
+        color: var(--black);
+        outline: none;
+      }
+
+      .resolve-textarea:focus {
+        border-color: var(--black);
+      }
+
       /* ═══ TWO COL ════════════════════════════════════════════════ */
       .two-col {
         display: grid;
@@ -940,6 +1148,10 @@
       /* Settings view: keep result panel constrained on the right */
       .config-layout {
         grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+      }
+
+      #view-intake .config-layout {
+        grid-template-columns: 1fr;
       }
 
       .config-main { min-width: 0; }
@@ -1017,6 +1229,10 @@
         .config-layout { grid-template-columns: 1fr; }
         .config-result { position: static; }
         .config-result pre { max-height: 45vh; }
+        .decision-grid,
+        .insight-grid,
+        .pattern-grid,
+        .action-grid,
         .result-row { grid-template-columns: 1fr; }
       }
 
@@ -1027,6 +1243,7 @@
         .stats-grid { grid-template-columns: repeat(2, 1fr); }
         .form-row { grid-template-columns: 1fr; }
         .topbar { padding: 0 20px; }
+        .resolve-context { grid-template-columns: 1fr; }
       }
 
       /* ═══ LOGIN ══════════════════════════════════════════════════ */
@@ -1519,6 +1736,32 @@
       </div>
     </div>
 
+    <div class="modal-bg" id="resolveModal">
+      <div class="modal modal-wide">
+        <div class="modal-header">
+          <span class="modal-title">Resolve Incident</span>
+          <button class="modal-close" id="resolveModalClose">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-sub">
+            Add clear internal resolution notes before marking the incident resolved. This becomes the final resolution record for the incident.
+          </div>
+          <div class="resolve-context" id="resolveContext">
+            <div class="resolve-card wide">
+              <div class="resolve-label">Incident</div>
+              <div class="resolve-value">Loading incident context...</div>
+            </div>
+          </div>
+          <div class="resolve-label">Resolution Notes</div>
+          <textarea id="resolveNotesInput" class="resolve-textarea" placeholder="Describe what changed, what fixed the issue, any relevant RCA, workaround, or follow-up action." spellcheck="true"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost btn-sm" id="resolveModalCancel">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="resolveModalConfirm">Mark Resolved</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toasts"></div>
 
     <script>
@@ -1621,6 +1864,7 @@
         rl_attachment:     'Attachment Evidence',
         rl_influence:      'Attachment Influence',
         rl_handoff:        'Operational Handoff',
+        rl_multi_ticket:   'Multi-Ticket Intelligence',
         btn_resolve:       'Mark Resolved',
         btn_view_all:      'View All →',
         via_provider:      'via',
@@ -1739,6 +1983,7 @@
         rl_attachment:     'Evidencia del Adjunto',
         rl_influence:      'Influencia del Adjunto',
         rl_handoff:        'Handoff Operacional',
+        rl_multi_ticket:   'Inteligencia Multi-Ticket',
         btn_resolve:       'Marcar Resuelto',
         btn_view_all:      'Ver Todos →',
         via_provider:      'vía',
@@ -1810,6 +2055,8 @@
 
     let currentTenant = null;
     let lastIncidentId = null;
+    let pendingResolveIncidentId = null;
+    let pendingResolveIncidentData = null;
 
     /* ═══ LOGIN LOGIC ═══════════════════════════════════════════ */
     const savedAdmin = (localStorage.getItem('aura_admin_tenant') || '').trim();
@@ -1969,6 +2216,17 @@
     document.getElementById('modalConfirm').addEventListener('click', switchTenant);
     modalInput.addEventListener('keydown', e => { if (e.key === 'Enter') switchTenant(); });
 
+    const resolveModal = document.getElementById('resolveModal');
+    const resolveNotesInput = document.getElementById('resolveNotesInput');
+    const resolveContext = document.getElementById('resolveContext');
+    document.getElementById('resolveModalClose').addEventListener('click', closeResolveModal);
+    document.getElementById('resolveModalCancel').addEventListener('click', closeResolveModal);
+    document.getElementById('resolveModalConfirm').addEventListener('click', confirmResolveIncident);
+    resolveModal.addEventListener('click', e => { if (e.target === resolveModal) closeResolveModal(); });
+    resolveNotesInput.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') confirmResolveIncident();
+    });
+
     function publicIntakeBaseUrl() {
       return window.location.origin;
     }
@@ -2061,6 +2319,8 @@
     });
 
     function renderTriage(d) {
+      document.getElementById('triageWrap').innerHTML = buildIncidentResultHtml(d);
+      return;
       const sev    = d.triage?.severity || 'low';
       const svc    = d.triage?.affected_service || '—';
       const sum    = d.triage?.triage_summary || d.triage?.technical_summary || '—';
@@ -2122,6 +2382,7 @@
         : 'No persisted incident links yet.';
       const attachmentEvidence = tr.attachment_summary || attachment.attachment_summary || 'No attachment evidence.';
       const attachmentInfluence = tr.attachment_influence_reasoning || 'Attachment did not materially change the triage.';
+      const multiTicket = buildMultiTicketSummary(d);
 
       const runItems = runs.map((r, i) => `<li data-n="${i+1}">${escHtml(r)}</li>`).join('');
 
@@ -2150,6 +2411,12 @@
                   <a href="${escHtml(turl)}" target="_blank" style="color:var(--black);text-decoration:underline;">${escHtml(tid_val)}</a>
                   <span style="color:var(--g400)"> ${t('via_provider')} ${escHtml(tprov)}</span>
                 </div>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result-cell full">
+                <div class="result-cell-label">${t('rl_multi_ticket')}</div>
+                <div class="result-cell-val">${escHtml(multiTicket)}</div>
               </div>
             </div>
             <div class="result-row">
@@ -2290,6 +2557,8 @@
     }
 
     function renderTriageFailure(d) {
+      document.getElementById('triageWrap').innerHTML = buildIncidentFailureHtml(d);
+      return;
       const failedDetail = (d.notifications || []).find((item) => item.status === 'failed');
       const failureText = failedDetail ? failedDetail.detail : 'Worker processing failed before the commander brief could be completed.';
       document.getElementById('triageWrap').innerHTML = `
@@ -2335,6 +2604,369 @@
       return handoff;
     }
 
+    function buildMultiTicketSummary(d) {
+      const tr = d.triage || {};
+      const links = Array.isArray(d.related_links) ? d.related_links : [];
+      const bestMatch = [...links].sort((left, right) => Number(right.similarity_score || 0) - Number(left.similarity_score || 0))[0];
+
+      let status = 'Single New Incident';
+      if (tr.is_duplicate) {
+        status = 'Possible Duplicate';
+      } else if (Number(tr.recurrence_count_30d || 0) > 0 || (tr.related_incident_ids && tr.related_incident_ids.length)) {
+        status = 'Recurring Incident Pattern';
+      }
+
+      const bestMatchLabel = bestMatch
+        ? `${bestMatch.target_incident_id} (${Math.round(Number(bestMatch.similarity_score || 0) * 100)}% similar)`
+        : 'No strong recent match';
+
+      const scope = tr.scope_assessment || 'single_report';
+      let action = 'Create new incident and monitor for additional reports.';
+      if (tr.is_duplicate) {
+        action = `Link to existing incident ${tr.duplicate_of_incident_id || 'already open'} and avoid duplicate ticket noise.`;
+      } else if (status === 'Recurring Incident Pattern') {
+        action = 'Create or keep ticket open, but link related incidents and treat it as a broader pattern.';
+      }
+
+      return [
+        `Status: ${status}`,
+        `Best Match: ${bestMatchLabel}`,
+        `Recent Frequency: ${Number(tr.recurrence_count_7d || 0)} in 7d | ${Number(tr.recurrence_count_30d || 0)} in 30d`,
+        `Scope: ${scope}`,
+        `Action: ${action}`,
+      ].join(' | ');
+    }
+
+    function buildHeroHeadline(d) {
+      const tr = d.triage || {};
+      const severity = String(tr.severity || 'low').toUpperCase();
+      const duplicateState = tr.is_duplicate
+        ? 'Possible Duplicate'
+        : (Number(tr.recurrence_count_30d || 0) > 0 ? 'Recurring Incident Pattern' : 'Single New Incident');
+      return `${severity} Severity · ${duplicateState}`;
+    }
+
+    function buildHeroConclusion(d) {
+      const tr = d.triage || {};
+      const summary = tr.triage_summary || tr.technical_summary || d.description || 'No summary available.';
+      const routing = tr.target_team || 'Needs Review';
+      const service = tr.affected_service || 'unknown service';
+      return `${summary} Team routing points to ${routing} for ${service}.`;
+    }
+
+    function buildHeroChips(d) {
+      const tr = d.triage || {};
+      const chips = [
+        tr.target_team ? `Team: ${tr.target_team}` : '',
+        tr.affected_service ? `Service: ${tr.affected_service}` : '',
+        tr.is_duplicate ? `Duplicate: ${tr.duplicate_of_incident_id || 'possible'}` : '',
+        tr.cluster_id ? `Cluster: ${tr.cluster_id}` : '',
+        tr.confidence !== undefined ? `Confidence: ${tr.confidence}` : '',
+      ].filter(Boolean);
+      return chips.map((chip) => `<span class="hero-chip">${escHtml(chip)}</span>`).join('');
+    }
+
+    function buildDecisionConfidence(d) {
+      const tr = d.triage || {};
+      return [
+        tr.confidence !== undefined ? `overall=${tr.confidence}` : '',
+        tr.severity_confidence !== undefined ? `severity=${tr.severity_confidence}` : '',
+        tr.root_cause_confidence !== undefined ? `rca=${tr.root_cause_confidence}` : '',
+      ].filter(Boolean).join(' | ') || 'No confidence score available.';
+    }
+
+    function getSeverityMeta(severity) {
+      const normalized = String(severity || 'low').toLowerCase();
+      if (['critical', 'high', 'medium', 'low'].includes(normalized)) {
+        return { key: normalized, label: normalized.charAt(0).toUpperCase() + normalized.slice(1) };
+      }
+      return { key: 'low', label: 'Low' };
+    }
+
+    function renderSeverityBadge(severity) {
+      const meta = getSeverityMeta(severity);
+      return `<span class="sev sev-${meta.key}">${meta.label}</span>`;
+    }
+
+    function renderSeverityDisplay(severity, score) {
+      const scoreText = Number.isFinite(Number(score)) ? `${Number(score)}/100` : 'Unscored';
+      return `<span class="severity-display">${renderSeverityBadge(severity)}<span class="severity-score">${scoreText}</span></span>`;
+    }
+
+    function buildIncidentFailureHtml(d) {
+      const failedDetail = (d.notifications || []).find((item) => item.status === 'failed');
+      const failureText = failedDetail ? failedDetail.detail : 'Worker processing failed before the commander brief could be completed.';
+      const sev = 'critical';
+      return `
+        <div class="result-panel severity-shell severity-${sev}">
+          <div class="result-topbar">
+            <span class="result-id"># ${escHtml(d.incident_id || 'unknown')}</span>
+            <span class="sev sev-critical">FAILED</span>
+          </div>
+          <div class="result-sections">
+            <div class="result-hero">
+              <div class="hero-topline">${t('triage_output')}</div>
+              <div class="hero-grid">
+                <div>
+                  <div class="sev sev-critical" style="display:inline-flex;margin-bottom:12px;">FAILED</div>
+                  <div class="hero-headline">Incident Processing Failed</div>
+                  <div class="hero-subcopy">${escHtml(failureText)}</div>
+                </div>
+                <div class="hero-chip-row">
+                  <span class="hero-chip">processing_state=${escHtml(String(d.processing_state || 'failed'))}</span>
+                </div>
+              </div>
+            </div>
+            <div class="result-group">
+              <div class="group-head"><div class="group-title">Recommended Action</div></div>
+              <div class="group-body">
+                <div class="action-grid">
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Status</div>
+                    <div class="mini-panel-value strong">FAILED</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Next Step</div>
+                    <div class="mini-panel-value">Retry the incident or inspect worker logs and job history.</div>
+                  </div>
+                  <div class="mini-panel wide">
+                    <div class="mini-panel-label">Suggested Command</div>
+                    <div class="result-code">docker compose logs worker</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function buildIncidentResultHtml(d) {
+      const sev = d.triage?.severity || 'low';
+      const svc = d.triage?.affected_service || '—';
+      const sum = d.triage?.triage_summary || d.triage?.technical_summary || '—';
+      const rca = d.triage?.root_cause_analysis || '—';
+      const fix = d.triage?.proposed_fix || '—';
+      const cli = d.triage?.proposed_cli_command || '—';
+      const score = d.triage?.severity_score ?? '';
+      const runs = d.triage?.runbook_suggestions || [];
+      const notifs = d.notifications || [];
+      const tidVal = d.ticket?.ticket_id || '—';
+      const tprov = d.ticket?.provider || '—';
+      const turl = d.ticket?.url || '#';
+      const ts = new Date(d.created_at).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+      const usage = usageFromIncident(d);
+      const tokLbl = formatTokensValue(usage.tokens);
+      const usdLbl = formatUsdValue(usage.costUsd);
+      const resolutionNotes = String(d.resolution_notes || '').trim();
+      const tr = d.triage || {};
+      const attachment = d.attachment || d.file_meta || {};
+      const routing = [
+        tr.target_team ? `team=${tr.target_team}` : '',
+        tr.affected_service ? `service=${tr.affected_service}` : '',
+        tr.incident_type ? `type=${tr.incident_type}` : '',
+        tr.routing_confidence !== undefined ? `routing_confidence=${tr.routing_confidence}` : '',
+      ].filter(Boolean).join(' | ') || '—';
+      const assessment = [
+        tr.affected_surface ? `surface=${tr.affected_surface}` : '',
+        tr.observed_error ? `error=${tr.observed_error}` : '',
+        tr.scope_assessment || (tr.user_scope ? `scope=${tr.user_scope}` : ''),
+        tr.confidence !== undefined ? `confidence=${tr.confidence}` : '',
+        tr.severity_confidence !== undefined ? `severity_confidence=${tr.severity_confidence}` : '',
+        tr.root_cause_confidence !== undefined ? `rca_confidence=${tr.root_cause_confidence}` : '',
+      ].filter(Boolean).join(' | ') || '—';
+      const scoreBreakdown = [
+        tr.description_score !== undefined ? `Technical description: +${tr.description_score}` : '',
+        tr.attachment_score !== undefined ? `Attachment evidence: +${tr.attachment_score}` : '',
+        tr.criticality_score !== undefined ? `Critical flow impact: +${tr.criticality_score}` : '',
+        Number(tr.recurrence_count_30d || 0) > 0 ? `Recurring pattern: seen ${tr.recurrence_count_30d} times in 30d` : '',
+        tr.severity_score !== undefined ? `Final score: ${tr.severity_score}/100` : '',
+      ].filter(Boolean).join(' | ') || 'No detailed scoring available.';
+      const ragEvidence = (tr.rag_evidence && tr.rag_evidence.length)
+        ? tr.rag_evidence.join(' | ')
+        : ((tr.retrieved_context_paths && tr.retrieved_context_paths.length)
+          ? tr.retrieved_context_paths.join(' | ')
+          : 'No strong repository context was retrieved.');
+      const incidentPattern = [
+        tr.related_incident_ids && tr.related_incident_ids.length ? `related=${tr.related_incident_ids.join(', ')}` : '',
+        tr.cluster_id ? `cluster=${tr.cluster_id}` : '',
+        tr.recurrence_count_7d !== undefined ? `seen_7d=${tr.recurrence_count_7d}` : '',
+        tr.recurrence_count_30d !== undefined ? `seen_30d=${tr.recurrence_count_30d}` : '',
+        tr.multi_ticket_influence_reasoning || '',
+      ].filter(Boolean).join(' | ') || 'No broader incident pattern detected.';
+      const duplicate = tr.is_duplicate
+        ? `duplicate_of=${tr.duplicate_of_incident_id || 'existing_open_incident'} | confidence=${tr.dedup_confidence ?? 0}`
+        : 'No active duplicate match detected.';
+      const scope = tr.scope_assessment || tr.user_scope || 'single_report';
+      const links = d.related_links && d.related_links.length
+        ? d.related_links.map((link) => `${link.relationship_type}:${link.target_incident_id} (${link.similarity_score})`).join(' | ')
+        : 'No persisted incident links yet.';
+      const attachmentEvidence = tr.attachment_summary || attachment.attachment_summary || 'No attachment evidence.';
+      const attachmentInfluence = tr.attachment_influence_reasoning || 'Attachment did not materially change the triage.';
+      const multiTicket = buildMultiTicketSummary(d);
+      const runItems = runs.map((r, i) => `<li data-n="${i+1}">${escHtml(r)}</li>`).join('');
+      const notifRows = notifs.map(n => `
+        <div class="notif-row">
+          <span class="notif-ch">${escHtml(n.channel.replace('_', ' '))}</span>
+          <span class="notif-detail">${escHtml(n.detail)}</span>
+          <span style="font-family:var(--font-mono);font-size:9px;color:var(--g400);flex-shrink:0;">${n.status.toUpperCase()}</span>
+        </div>`).join('');
+
+      return `
+        <div class="result-panel">
+          <div class="result-topbar">
+            <span class="result-id"># ${escHtml(d.incident_id)}</span>
+            ${renderSeverityDisplay(sev, score)}
+          </div>
+          <div class="result-sections">
+            <div class="result-hero">
+              <div class="hero-topline">${t('triage_output')}</div>
+              <div class="hero-grid">
+                <div>
+                  <div style="margin-bottom:12px;">${renderSeverityDisplay(sev, score)}</div>
+                  <div class="hero-headline">${escHtml(buildHeroHeadline(d))}</div>
+                  <div class="hero-subcopy">${escHtml(buildHeroConclusion(d))}</div>
+                </div>
+                <div class="hero-chip-row">${buildHeroChips(d)}</div>
+              </div>
+            </div>
+            <div class="result-group">
+              <div class="group-head"><div class="group-title">Final Outcome</div></div>
+              <div class="group-body">
+                <div class="decision-grid">
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Severity</div>
+                    <div class="mini-panel-value strong">${renderSeverityDisplay(sev, score)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_ticket')}</div>
+                    <div class="mini-panel-value"><a href="${escHtml(turl)}" target="_blank" style="color:var(--black);text-decoration:underline;">${escHtml(tidVal)}</a><span style="color:var(--g400)"> ${t('via_provider')} ${escHtml(tprov)}</span></div>
+                  </div>
+                  <div class="mini-panel wide">
+                    <div class="mini-panel-label">${t('rl_summary')}</div>
+                    <div class="mini-panel-value">${escHtml(sum)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="result-group">
+              <div class="group-head"><div class="group-title">Decision Summary</div></div>
+              <div class="group-body">
+                <div class="decision-grid">
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Severity</div>
+                    <div class="mini-panel-value strong">${renderSeverityDisplay(sev, score)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Routing</div>
+                    <div class="mini-panel-value">${escHtml(routing)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Duplicate Status</div>
+                    <div class="mini-panel-value">${escHtml(tr.is_duplicate ? `Possible duplicate of ${tr.duplicate_of_incident_id || 'existing incident'}` : (Number(tr.recurrence_count_30d || 0) > 0 ? 'Recurring pattern detected' : 'No active duplicate match'))}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Confidence</div>
+                    <div class="mini-panel-value">${escHtml(buildDecisionConfidence(d))}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="result-group">
+              <div class="group-head"><div class="group-title">Why AURA Decided This</div></div>
+              <div class="group-body">
+                <div class="insight-grid">
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_score')}</div>
+                    <div class="mini-panel-value">${escHtml(scoreBreakdown)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">Signals Detected</div>
+                    <div class="mini-panel-value">${escHtml(assessment)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_rag')}</div>
+                    <div class="mini-panel-value">${escHtml(ragEvidence)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_influence')}</div>
+                    <div class="mini-panel-value">${escHtml(attachmentInfluence)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="result-group">
+              <div class="group-head"><div class="group-title">Incident Pattern</div></div>
+              <div class="group-body">
+                <div class="pattern-grid">
+                  <div class="mini-panel wide">
+                    <div class="mini-panel-label">${t('rl_multi_ticket')}</div>
+                    <div class="mini-panel-value">${escHtml(multiTicket)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_pattern')}</div>
+                    <div class="mini-panel-value">${escHtml(incidentPattern)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_duplicate')}</div>
+                    <div class="mini-panel-value">${escHtml(duplicate)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_scope')}</div>
+                    <div class="mini-panel-value">${escHtml(scope)}</div>
+                  </div>
+                  <div class="mini-panel wide">
+                    <div class="mini-panel-label">${t('rl_links')}</div>
+                    <div class="mini-panel-value">${escHtml(links)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="result-group">
+              <div class="group-head"><div class="group-title">Recommended Action & Handoff</div></div>
+              <div class="group-body">
+                <div class="action-grid">
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_rca')}</div>
+                    <div class="mini-panel-value">${escHtml(rca)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_fix')}</div>
+                    <div class="mini-panel-value">${escHtml(fix)}</div>
+                  </div>
+                  <div class="mini-panel">
+                    <div class="mini-panel-label">${t('rl_attachment')}</div>
+                    <div class="mini-panel-value">${escHtml(attachmentEvidence)}</div>
+                  </div>
+                  <div class="mini-panel wide">
+                    <div class="mini-panel-label">${t('rl_cli')}</div>
+                    <div class="result-code">${escHtml(cli)}</div>
+                  </div>
+                  ${runs.length ? `<div class="mini-panel wide"><div class="mini-panel-label">${t('rl_runbook')}</div><ul class="runbook-list" style="margin-top:6px;">${runItems}</ul></div>` : ''}
+                  ${resolutionNotes ? `<div class="mini-panel wide"><div class="mini-panel-label">${t('rl_resolution')}</div><div class="mini-panel-value">${escHtml(resolutionNotes)}</div></div>` : ''}
+                  <div class="mini-panel wide">
+                    <div class="mini-panel-label">${t('rl_handoff')}</div>
+                    <div class="result-code">${escHtml(buildOperationalHandoff(d))}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            ${notifs.length ? `<div class="result-notifs">${notifRows}</div>` : ''}
+            <div class="result-meta-bar">
+              <span>${ts}</span>
+              <span>${t('tenant_meta')} ${escHtml(d.tenant_id)}</span>
+              <span>SVC: ${escHtml(svc)}</span>
+              <span>${t('th_tokens')}: ${escHtml(tokLbl)}</span>
+              <span>${t('th_cost')}: ${escHtml(usdLbl)}</span>
+              ${d.file_meta ? `<span>FILE: ${escHtml(d.file_meta.filename)}</span>` : ''}
+            </div>
+          </div>
+          <div class="form-actions" style="border-top:1px solid var(--g150);">
+            <button class="btn btn-ghost btn-sm" onclick="resolveIncident('${d.incident_id}')">${t('btn_resolve')}</button>
+            <button class="btn btn-ghost btn-sm" onclick="navigate('incidents')">${t('btn_view_all')}</button>
+          </div>
+        </div>`;
+    }
+
     function renderTriageErr(msg) {
       document.getElementById('triageWrap').innerHTML = `
         <div class="section-block">
@@ -2351,24 +2983,100 @@
 
     /* ═══ RESOLVE ════════════════════════════════════════════════ */
     async function resolveIncident(id) {
-      const rawNotes = window.prompt(t('resolve_prompt'), '');
-      if (rawNotes == null) return;
-      const notes = rawNotes.trim();
+      pendingResolveIncidentId = id;
+      pendingResolveIncidentData = null;
+      resolveNotesInput.value = '';
+      resolveContext.innerHTML = `
+        <div class="resolve-card wide">
+          <div class="resolve-label">Incident</div>
+          <div class="resolve-value">Loading incident context...</div>
+        </div>`;
+      resolveModal.classList.add('open');
+      setTimeout(() => resolveNotesInput.focus(), 50);
+      try {
+        const response = await fetch(`${API}/api/incidents/${encodeURIComponent(id)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Unable to load incident context.');
+        pendingResolveIncidentData = data;
+        renderResolveContext(data);
+      } catch (err) {
+        resolveContext.innerHTML = `
+          <div class="resolve-card wide">
+            <div class="resolve-label">Incident</div>
+            <div class="resolve-value">Unable to load full context. You can still resolve the incident manually.</div>
+          </div>`;
+        toast(`ERROR: ${err.message}`, 'err');
+      }
+    }
+
+    function closeResolveModal() {
+      resolveModal.classList.remove('open');
+      pendingResolveIncidentId = null;
+      pendingResolveIncidentData = null;
+      resolveNotesInput.value = '';
+    }
+
+    function renderResolveContext(incident) {
+      const triage = incident.triage || {};
+      const severity = renderSeverityDisplay(triage.severity || 'low', triage.severity_score);
+      const ticket = incident.ticket?.ticket_id
+        ? `${incident.ticket.ticket_id} via ${incident.ticket.provider || 'unknown'}`
+        : 'No ticket linked yet.';
+      const summary = triage.triage_summary || triage.technical_summary || incident.description || 'No summary available.';
+      resolveContext.innerHTML = `
+        <div class="resolve-card">
+          <div class="resolve-label">Incident</div>
+          <div class="resolve-value"># ${escHtml(incident.incident_id || 'unknown')}</div>
+        </div>
+        <div class="resolve-card">
+          <div class="resolve-label">Severity</div>
+          <div class="resolve-value">${severity}</div>
+        </div>
+        <div class="resolve-card">
+          <div class="resolve-label">Service</div>
+          <div class="resolve-value">${escHtml(triage.affected_service || 'unknown service')}</div>
+        </div>
+        <div class="resolve-card">
+          <div class="resolve-label">Ticket</div>
+          <div class="resolve-value">${escHtml(ticket)}</div>
+        </div>
+        <div class="resolve-card wide">
+          <div class="resolve-label">Current Summary</div>
+          <div class="resolve-value">${escHtml(summary)}</div>
+        </div>`;
+    }
+
+    async function confirmResolveIncident() {
+      const id = pendingResolveIncidentId;
+      if (!id) return;
+      const notes = resolveNotesInput.value.trim();
       if (notes.length < 10) {
         toast(t('resolve_required'), 'err');
+        resolveNotesInput.focus();
         return;
       }
+      const confirmBtn = document.getElementById('resolveModalConfirm');
+      const originalText = confirmBtn.textContent;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Resolving...';
       try {
-        const res  = await fetch(`${API}/api/incidents/${id}/resolve`, {
+        const res  = await fetch(`${API}/api/incidents/${encodeURIComponent(id)}/resolve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ resolution_notes: notes }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '');
+        closeResolveModal();
         toast(`${t('toast_resolved')}: ${id.toUpperCase()}`, 'ok');
-        loadDashboard(); loadIncidents();
-      } catch (err) { toast(`ERROR: ${err.message}`, 'err'); }
+        loadDashboard();
+        loadIncidents();
+      } catch (err) {
+        toast(`ERROR: ${err.message}`, 'err');
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+      }
     }
 
     /* ═══ DASHBOARD ══════════════════════════════════════════════ */
@@ -2489,10 +3197,10 @@
         const tokensLabel = formatTokensValue(usage.tokens);
         const usdLabel = formatUsdValue(usage.costUsd);
 
-        return `<tr>
+        return `<tr class="severity-shell severity-${sev}">
           <td><span class="cell-id">${escHtml(inc.incident_id)}</span></td>
           <td><span class="cell-desc">${escHtml(inc.description)}</span></td>
-          <td><span class="sev sev-${sev}">${sev.toUpperCase()}</span></td>
+          <td>${renderSeverityDisplay(sev, inc.triage?.severity_score)}</td>
           <td style="font-family:var(--font-mono);font-size:10px;color:var(--g500);">${escHtml(svc)}</td>
           ${!compact ? `<td><span class="status-badge status-${stat}">${stat.toUpperCase()}</span></td>` : ''}
           ${!compact ? `<td style="font-family:var(--font-mono);font-size:10px;color:var(--g600);text-align:right;">${escHtml(tokensLabel)}</td>` : ''}
@@ -2804,5 +3512,6 @@
     </script>
   </body>
 </html>
+
 
 

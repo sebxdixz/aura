@@ -54,6 +54,45 @@
     .label { font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--g500); margin-bottom: 10px; }
     .value { font-size: 13px; line-height: 1.55; color: var(--g700); }
     .badge { display: inline-block; padding: 4px 10px; border: 1px solid var(--black); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+    .severity-display { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .sev-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--g200);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .sev-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: 0.85;
+      flex-shrink: 0;
+    }
+    .sev-critical { background: #FEE2E2; color: #B91C1C; border-color: #FCA5A5; }
+    .sev-high { background: #FFEDD5; color: #C2410C; border-color: #FDBA74; }
+    .sev-medium { background: #FEF3C7; color: #B45309; border-color: #FCD34D; }
+    .sev-low { background: #DCFCE7; color: #166534; border-color: #86EFAC; }
+    .severity-score {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.6px;
+      color: var(--g700);
+      text-transform: uppercase;
+    }
+    .severity-accent-critical { border-left: 4px solid #FCA5A5; }
+    .severity-accent-high { border-left: 4px solid #FDBA74; }
+    .severity-accent-medium { border-left: 4px solid #FCD34D; }
+    .severity-accent-low { border-left: 4px solid #86EFAC; }
     .list { display: grid; gap: 8px; }
     .item { font-size: 13px; line-height: 1.5; color: var(--g700); }
     .score-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -201,10 +240,10 @@
       const triage = incident.triage || {};
       commandMeta.textContent = `${items.length} total incidents • commander focus: ${incident.incident_id}`;
       commandView.innerHTML = `
-        <div class="command-card">
+        <div class="command-card severity-accent-${esc(String(triage.severity || "low").toLowerCase())}">
           <div>
             <div class="kicker">Current Highest Priority</div>
-            <div class="headline">Triage Score: ${esc(String(triage.severity || "low").toUpperCase())} (${esc(String(triage.severity_score || 0))}/100)</div>
+            <div class="headline">${renderSeverityDisplay(triage.severity || "low", triage.severity_score)}</div>
             <div class="summary">${esc(triage.triage_summary || triage.technical_summary || incident.description || "-")}</div>
             <div class="grid">
               <div class="card">
@@ -309,7 +348,7 @@
         return `
           <tr>
             <td class="mono">${id}</td>
-            <td><span class="pill">${esc(triage.severity || "low")}</span> ${esc(String(triage.severity_score || 0))}</td>
+            <td>${renderSeverityDisplay(triage.severity || "low", triage.severity_score)}</td>
             <td class="mono">${esc(triage.affected_service || "-")}</td>
             <td>${esc(routingBits || "-")}</td>
             <td>${esc(triage.technical_summary || item.description || "-")}</td>
@@ -338,6 +377,24 @@
       return items
         .map((item) => `<div class="item">${esc(`${item.relationship_type} -> ${item.target_incident_id} (${item.similarity_score})`)}</div>`)
         .join("");
+    }
+
+    function getSeverityMeta(severity) {
+      const normalized = String(severity || "low").toLowerCase();
+      if (["critical", "high", "medium", "low"].includes(normalized)) {
+        return { key: normalized, label: normalized.charAt(0).toUpperCase() + normalized.slice(1) };
+      }
+      return { key: "low", label: "Low" };
+    }
+
+    function renderSeverityBadge(severity) {
+      const meta = getSeverityMeta(severity);
+      return `<span class="sev-badge sev-${meta.key}">${meta.label}</span>`;
+    }
+
+    function renderSeverityDisplay(severity, score) {
+      const scoreText = Number.isFinite(Number(score)) ? `${Number(score)}/100` : "Unscored";
+      return `<span class="severity-display">${renderSeverityBadge(severity)}<span class="severity-score">${esc(scoreText)}</span></span>`;
     }
 
     function severityRank(value) {

@@ -101,17 +101,149 @@
     .term-line { opacity: 0; animation: fadeIn .2s forwards; }
     .result-block { display: none; }
     .result-block.active { display: block; }
-    .result-grid { display: grid; grid-template-columns: 1fr 1fr; }
-    .res-card {
-      border-right: 1px solid var(--g150); border-bottom: 1px solid var(--g150); padding: 18px;
+    .result-layout { display: grid; gap: 18px; padding: 18px; background: #fcfaf6; }
+    .result-hero,
+    .section-group {
+      border: 1px solid var(--g150);
+      background: var(--white);
     }
-    .res-card.full { grid-column: 1 / -1; border-right: none; }
-    .result-grid .res-card:nth-child(2n) { border-right: none; }
-    .res-label { font-size: 10px; letter-spacing: 1.9px; color: var(--g500); margin-bottom: 10px; }
-    .res-val { font-size: 14px; line-height: 1.55; color: var(--black); }
+    .result-hero {
+      padding: 22px;
+      background: linear-gradient(180deg, #fff 0%, #f8f5ee 100%);
+    }
+    .hero-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .hero-title {
+      font-size: 11px;
+      letter-spacing: 2.2px;
+      color: var(--g500);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .hero-headline {
+      font-size: 30px;
+      line-height: 0.95;
+      letter-spacing: -1.4px;
+      font-weight: 900;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .hero-sub {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--g700);
+      max-width: 720px;
+    }
+    .hero-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .hero-chip {
+      border: 1px solid var(--g200);
+      background: #f8f6f1;
+      padding: 7px 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--g700);
+    }
+    .section-group-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--g150);
+      background: var(--g50);
+    }
+    .section-title {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--g500);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+    }
+    .section-body { padding: 16px; }
+    .decision-grid,
+    .insight-grid,
+    .pattern-grid,
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .mini-card {
+      border: 1px solid var(--g150);
+      background: #fcfbf8;
+      padding: 14px;
+    }
+    .mini-label,
+    .res-label {
+      font-size: 10px;
+      letter-spacing: 1.9px;
+      color: var(--g500);
+      margin-bottom: 8px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+    }
+    .mini-value,
+    .res-val {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--black);
+    }
+    .mini-value.strong {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .wide { grid-column: 1 / -1; }
+    .severity-display {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
     .sev-badge {
-      display: inline-block; padding: 4px 10px; border: 1px solid var(--black);
-      font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; margin-bottom: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--black);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .sev-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: 0.85;
+      flex-shrink: 0;
+    }
+    .sev-critical { background: #FEE2E2; color: #B91C1C; border-color: #FCA5A5; }
+    .sev-high { background: #FFEDD5; color: #C2410C; border-color: #FDBA74; }
+    .sev-medium { background: #FEF3C7; color: #B45309; border-color: #FCD34D; }
+    .sev-low { background: #DCFCE7; color: #166534; border-color: #86EFAC; }
+    .severity-score {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.6px;
+      color: var(--g700);
+      text-transform: uppercase;
     }
     .code-block {
       background: var(--black); color: var(--white); padding: 16px; font-family: var(--font-mono);
@@ -132,8 +264,8 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes fadeIn { to { opacity: 1; } }
     @media (max-width: 760px) {
-      .row, .result-grid { grid-template-columns: 1fr; }
-      .field, .res-card { border-right: none !important; }
+      .row, .decision-grid, .insight-grid, .pattern-grid, .action-grid { grid-template-columns: 1fr; }
+      .field { border-right: none !important; }
     }
   </style>
 </head>
@@ -202,67 +334,68 @@
         <div id="termLines"></div>
       </div>
       <div class="result-block" id="resultBlock">
-        <div class="result-grid">
-          <div class="res-card full">
-            <div class="res-label">Commander Summary</div>
-            <div class="sev-badge" id="resSev">LOW</div>
-            <div class="res-val" id="resSum"></div>
+        <div class="result-layout">
+          <div class="result-hero">
+            <div class="hero-top">
+              <div>
+                <div class="hero-title">Final Outcome</div>
+                <div class="sev-badge" id="resSev">LOW</div>
+                <div class="hero-headline" id="resHeadline">Low Severity Incident</div>
+                <div class="hero-sub" id="resConclusion"></div>
+              </div>
+            </div>
+            <div class="hero-chip-row" id="resHeroChips"></div>
           </div>
-          <div class="res-card">
-            <div class="res-label">Root Cause</div>
-            <div class="res-val" id="resRCA"></div>
+
+          <div class="section-group">
+            <div class="section-group-head"><div class="section-title">Decision Summary</div></div>
+            <div class="section-body">
+              <div class="decision-grid">
+                <div class="mini-card"><div class="mini-label">Severity</div><div class="mini-value strong" id="resDecisionSeverity"></div></div>
+                <div class="mini-card"><div class="mini-label">Routing</div><div class="mini-value" id="resDecisionRouting"></div></div>
+                <div class="mini-card"><div class="mini-label">Duplicate Status</div><div class="mini-value" id="resDecisionDuplicate"></div></div>
+                <div class="mini-card"><div class="mini-label">Confidence</div><div class="mini-value" id="resDecisionConfidence"></div></div>
+              </div>
+            </div>
           </div>
-          <div class="res-card">
-            <div class="res-label">Recommended Investigation</div>
-            <div class="res-val" id="resFix"></div>
+
+          <div class="section-group">
+            <div class="section-group-head"><div class="section-title">Why AURA Decided This</div></div>
+            <div class="section-body">
+              <div class="insight-grid">
+                <div class="mini-card"><div class="mini-label">Score Breakdown</div><div class="mini-value" id="resScoreBreakdown"></div></div>
+                <div class="mini-card"><div class="mini-label">Signals Detected</div><div class="mini-value" id="resExplainability"></div></div>
+                <div class="mini-card"><div class="mini-label">Repository Context</div><div class="mini-value" id="resRagEvidence"></div></div>
+                <div class="mini-card"><div class="mini-label">Attachment Influence</div><div class="mini-value" id="resInfluence"></div></div>
+              </div>
+            </div>
           </div>
-          <div class="res-card">
-            <div class="res-label">Routing Decision</div>
-            <div class="res-val" id="resRouting"></div>
+
+          <div class="section-group">
+            <div class="section-group-head"><div class="section-title">Incident Pattern</div></div>
+            <div class="section-body">
+              <div class="pattern-grid">
+                <div class="mini-card wide"><div class="mini-label">Multi-Ticket Intelligence</div><div class="mini-value" id="resMultiTicket"></div></div>
+                <div class="mini-card"><div class="mini-label">Pattern Summary</div><div class="mini-value" id="resPattern"></div></div>
+                <div class="mini-card"><div class="mini-label">Incident Links</div><div class="mini-value" id="resLinks"></div></div>
+                <div class="mini-card"><div class="mini-label">Possible Duplicate</div><div class="mini-value" id="resDuplicate"></div></div>
+                <div class="mini-card"><div class="mini-label">Scope Assessment</div><div class="mini-value" id="resScope"></div></div>
+              </div>
+            </div>
           </div>
-          <div class="res-card">
-            <div class="res-label">Assessment Signals</div>
-            <div class="res-val" id="resExplainability"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Score Breakdown</div>
-            <div class="res-val" id="resScoreBreakdown"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">RAG Evidence</div>
-            <div class="res-val" id="resRagEvidence"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Incident Pattern</div>
-            <div class="res-val" id="resPattern"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Possible Duplicate</div>
-            <div class="res-val" id="resDuplicate"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Scope Assessment</div>
-            <div class="res-val" id="resScope"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Incident Links</div>
-            <div class="res-val" id="resLinks"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Attachment Evidence</div>
-            <div class="res-val" id="resAttachment"></div>
-          </div>
-          <div class="res-card">
-            <div class="res-label">Attachment Influence</div>
-            <div class="res-val" id="resInfluence"></div>
-          </div>
-          <div class="res-card full">
-            <div class="res-label">Suggested Command</div>
-            <div class="code-block" id="resCode"></div>
-          </div>
-          <div class="res-card full">
-            <div class="res-label">Operational Handoff</div>
-            <div class="res-val" id="resIntegrations" style="font-family:var(--font-mono); font-size:12px;"></div>
+
+          <div class="section-group">
+            <div class="section-group-head"><div class="section-title">Recommended Action & Handoff</div></div>
+            <div class="section-body">
+              <div class="action-grid">
+                <div class="mini-card"><div class="mini-label">Root Cause</div><div class="mini-value" id="resRCA"></div></div>
+                <div class="mini-card"><div class="mini-label">Recommended Investigation</div><div class="mini-value" id="resFix"></div></div>
+                <div class="mini-card"><div class="mini-label">Attachment Evidence</div><div class="mini-value" id="resAttachment"></div></div>
+                <div class="mini-card wide"><div class="mini-label">Suggested Command</div><div class="code-block" id="resCode"></div></div>
+                <div class="mini-card wide"><div class="mini-label">Runbook Steps</div><div class="mini-value" id="resRunbook"></div></div>
+                <div class="mini-card wide"><div class="mini-label">Action & Handoff</div><div class="code-block" id="resIntegrations"></div></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -381,8 +514,25 @@
 
       const tr = data.triage || {};
       const attachment = data.attachment || {};
-      document.getElementById("resSev").textContent = `${String(tr.severity || "low").toUpperCase()}${tr.severity_score ? ` (${tr.severity_score})` : ""}`;
-      document.getElementById("resSum").textContent = tr.triage_summary || tr.technical_summary || data.description || "";
+      const severityKey = String(tr.severity || "low").toLowerCase();
+      const finalSeverity = severityKey.toUpperCase();
+      document.getElementById("resSev").innerHTML = renderSeverityDisplay(severityKey, tr.severity_score);
+      document.getElementById("resHeadline").textContent = buildHeroHeadline(data);
+      document.getElementById("resConclusion").textContent = buildHeroConclusion(data);
+      document.getElementById("resHeroChips").innerHTML = buildHeroChips(data);
+      document.getElementById("resDecisionSeverity").innerHTML = renderSeverityDisplay(severityKey, tr.severity_score);
+      document.getElementById("resDecisionRouting").textContent = [
+        tr.target_team || "Needs Review",
+        tr.affected_service || "unknown service"
+      ].join(" → ");
+      document.getElementById("resDecisionDuplicate").textContent = tr.is_duplicate
+        ? `Possible duplicate of ${tr.duplicate_of_incident_id || "existing incident"}`
+        : (Number(tr.recurrence_count_30d || 0) > 0 ? "Recurring pattern detected" : "No active duplicate match");
+      document.getElementById("resDecisionConfidence").textContent = [
+        tr.confidence !== undefined ? `overall=${tr.confidence}` : "",
+        tr.severity_confidence !== undefined ? `severity=${tr.severity_confidence}` : "",
+      ].filter(Boolean).join(" | ");
+      document.getElementById("resMultiTicket").textContent = buildMultiTicketSummary(data);
       document.getElementById("resRCA").textContent = tr.root_cause_analysis || "No RCA generated.";
       document.getElementById("resFix").textContent = tr.proposed_fix || "No proposed fix.";
       document.getElementById("resRouting").textContent = [
@@ -426,6 +576,7 @@
       document.getElementById("resAttachment").textContent = tr.attachment_summary || attachment.attachment_summary || "No attachment evidence.";
       document.getElementById("resInfluence").textContent = tr.attachment_influence_reasoning || "Attachment did not materially change the triage.";
       document.getElementById("resCode").textContent = tr.proposed_cli_command || "echo 'No CLI action needed.'";
+      document.getElementById("resRunbook").innerHTML = buildRunbookHtml(tr.runbook_suggestions || []);
 
       let integrations = "";
       if (data.ticket && data.ticket.ticket_id) {
@@ -493,8 +644,15 @@
       outStatus.textContent = "FAILED";
       const failedDetail = (data.notifications || []).find((item) => item.status === "failed");
       const failureText = failedDetail ? failedDetail.detail : "Worker processing failed before the commander brief could be completed.";
-      document.getElementById("resSev").textContent = "FAILED";
-      document.getElementById("resSum").textContent = failureText;
+      document.getElementById("resSev").innerHTML = `<span class="sev-badge sev-critical">FAILED</span>`;
+      document.getElementById("resHeadline").textContent = "Incident Processing Failed";
+      document.getElementById("resConclusion").textContent = failureText;
+      document.getElementById("resHeroChips").innerHTML = "";
+      document.getElementById("resDecisionSeverity").innerHTML = `<span class="sev-badge sev-critical">FAILED</span>`;
+      document.getElementById("resDecisionRouting").textContent = "processing_state=failed";
+      document.getElementById("resDecisionDuplicate").textContent = "Unavailable";
+      document.getElementById("resDecisionConfidence").textContent = "No final confidence available.";
+      document.getElementById("resMultiTicket").textContent = "Multi-ticket analysis unavailable because worker processing did not complete.";
       document.getElementById("resRCA").textContent = "Processing stopped before a root cause analysis was produced.";
       document.getElementById("resFix").textContent = "Retry the incident or inspect worker logs and job history.";
       document.getElementById("resRouting").textContent = `processing_state=${String(data.processing_state || "failed")}`;
@@ -510,6 +668,7 @@
         : "No attachment stored.";
       document.getElementById("resInfluence").textContent = "Attachment influence was not finalized.";
       document.getElementById("resCode").textContent = "docker compose logs worker";
+      document.getElementById("resRunbook").innerHTML = "No runbook available.";
       document.getElementById("resIntegrations").innerText = `incident=${data.incident_id}\nprocessing_state=${String(data.processing_state || "failed")}`;
       submitBtn.disabled = false;
       submitBtn.textContent = "Retry Incident";
@@ -522,6 +681,91 @@
       el.textContent = message;
       document.getElementById("toasts").appendChild(el);
       setTimeout(() => el.remove(), 3200);
+    }
+
+    function buildMultiTicketSummary(data) {
+      const tr = data.triage || {};
+      const links = Array.isArray(data.related_links) ? data.related_links : [];
+      const bestMatch = [...links].sort((left, right) => Number(right.similarity_score || 0) - Number(left.similarity_score || 0))[0];
+
+      let status = "Single New Incident";
+      if (tr.is_duplicate) {
+        status = "Possible Duplicate";
+      } else if (Number(tr.recurrence_count_30d || 0) > 0 || (tr.related_incident_ids && tr.related_incident_ids.length)) {
+        status = "Recurring Incident Pattern";
+      }
+
+      const bestMatchLabel = bestMatch
+        ? `${bestMatch.target_incident_id} (${Math.round(Number(bestMatch.similarity_score || 0) * 100)}% similar)`
+        : "No strong recent match";
+
+      const scope = tr.scope_assessment || "single_report";
+      let action = "Create new incident and monitor for additional reports.";
+      if (tr.is_duplicate) {
+        action = `Link to existing incident ${tr.duplicate_of_incident_id || "already open"} and avoid duplicate ticket noise.`;
+      } else if (status === "Recurring Incident Pattern") {
+        action = "Create or keep ticket open, but link related incidents and treat it as a broader pattern.";
+      }
+
+      return [
+        `Status: ${status}`,
+        `Best Match: ${bestMatchLabel}`,
+        `Recent Frequency: ${Number(tr.recurrence_count_7d || 0)} in 7d | ${Number(tr.recurrence_count_30d || 0)} in 30d`,
+        `Scope: ${scope}`,
+        `Action: ${action}`,
+      ].join(" | ");
+    }
+
+    function buildHeroHeadline(data) {
+      const tr = data.triage || {};
+      const severity = String(tr.severity || "low").toUpperCase();
+      const duplicate = tr.is_duplicate ? "Possible Duplicate" : (Number(tr.recurrence_count_30d || 0) > 0 ? "Recurring Incident Pattern" : "New Incident");
+      return `${severity} Severity · ${duplicate}`;
+    }
+
+    function buildHeroConclusion(data) {
+      const tr = data.triage || {};
+      const routing = tr.target_team || "Needs Review";
+      const service = tr.affected_service || "unknown service";
+      const summary = tr.triage_summary || tr.technical_summary || data.description || "No summary available.";
+      return `${summary} Team routing points to ${routing} for ${service}.`;
+    }
+
+    function buildHeroChips(data) {
+      const tr = data.triage || {};
+      const chips = [
+        tr.target_team ? `Team: ${tr.target_team}` : "",
+        tr.affected_service ? `Service: ${tr.affected_service}` : "",
+        tr.is_duplicate ? `Duplicate: ${tr.duplicate_of_incident_id || "possible"}` : "",
+        tr.cluster_id ? `Cluster: ${tr.cluster_id}` : "",
+        tr.confidence !== undefined ? `Confidence: ${tr.confidence}` : "",
+      ].filter(Boolean);
+      return chips.map((chip) => `<span class="hero-chip">${chip}</span>`).join("");
+    }
+
+    function buildRunbookHtml(items) {
+      if (!items || !items.length) {
+        return "No runbook suggestions available.";
+      }
+      return items.map((item, index) => `${index + 1}. ${item}`).join("<br>");
+    }
+
+    function getSeverityMeta(severity) {
+      const normalized = String(severity || "low").toLowerCase();
+      if (["critical", "high", "medium", "low"].includes(normalized)) {
+        return { key: normalized, label: normalized.charAt(0).toUpperCase() + normalized.slice(1) };
+      }
+      return { key: "low", label: "Low" };
+    }
+
+    function renderSeverityBadge(severity) {
+      const meta = getSeverityMeta(severity);
+      return `<span class="sev-badge sev-${meta.key}">${meta.label}</span>`;
+    }
+
+    function renderSeverityDisplay(severity, score) {
+      const scoreText = Number.isFinite(Number(score)) ? `${Number(score)}/100` : "Unscored";
+      return `<span class="severity-display">${renderSeverityBadge(severity)}<span class="severity-score">${scoreText}</span></span>`;
     }
   </script>
 </body>
