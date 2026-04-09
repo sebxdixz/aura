@@ -226,6 +226,10 @@
                 <div class="value">${esc(triage.proposed_fix || "-")}</div>
               </div>
               <div class="card">
+                <div class="label">Possible Duplicate</div>
+                <div class="value">${triage.is_duplicate ? esc(`${triage.duplicate_of_incident_id || "existing_open_incident"} | confidence ${String(triage.dedup_confidence ?? 0)}`) : "No active duplicate match detected."}</div>
+              </div>
+              <div class="card">
                 <div class="label">Multi-Ticket Intelligence</div>
                 <div class="value">${esc(triage.multi_ticket_influence_reasoning || "No strong multi-ticket pattern detected yet.")}</div>
               </div>
@@ -256,6 +260,10 @@
             <div class="card" style="margin-top:12px;">
               <div class="label">Related Incidents</div>
               <div class="list">${renderList(triage.related_incident_ids || [])}</div>
+            </div>
+            <div class="card" style="margin-top:12px;">
+              <div class="label">Incident Links</div>
+              <div class="list">${renderIncidentLinks(incident.related_links || [])}</div>
             </div>
           </div>
         </div>
@@ -292,7 +300,10 @@
           `critical +${triage.criticality_score || 0}`,
         ].join(" | ");
         const relatedBits = [
+          triage.is_duplicate ? `duplicate_of=${triage.duplicate_of_incident_id || "open_incident"}` : "",
           triage.related_incident_ids?.length ? `related=${triage.related_incident_ids.length}` : "",
+          item.related_links?.length ? `links=${item.related_links.length}` : "",
+          triage.scope_assessment ? `scope=${triage.scope_assessment}` : "",
           triage.cluster_id ? `cluster=${triage.cluster_id}` : "",
           triage.recurrence_count_30d ? `30d=${triage.recurrence_count_30d}` : ""
         ].filter(Boolean).join(" | ");
@@ -320,6 +331,15 @@
         return '<div class="item">No strong evidence available yet.</div>';
       }
       return items.map((item) => `<div class="item">${esc(item)}</div>`).join("");
+    }
+
+    function renderIncidentLinks(items) {
+      if (!items || !items.length) {
+        return '<div class="item">No persisted incident links yet.</div>';
+      }
+      return items
+        .map((item) => `<div class="item">${esc(`${item.relationship_type} -> ${item.target_incident_id} (${item.similarity_score})`)}</div>`)
+        .join("");
     }
 
     function severityRank(value) {

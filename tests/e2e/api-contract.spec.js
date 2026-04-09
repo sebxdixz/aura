@@ -320,6 +320,11 @@ test.describe("AURA API contract", () => {
     const latest = incidents[2];
     expect(Array.isArray(latest.triage.related_incident_ids)).toBeTruthy();
     expect(latest.triage.related_incident_ids.length).toBeGreaterThan(0);
+    expect(Array.isArray(latest.related_links)).toBeTruthy();
+    expect(latest.related_links.length).toBeGreaterThan(0);
+    expect(["localized_repeat", "likely_multi_user", "ongoing_recurring_pattern", "duplicate_report_linked_to_existing_incident"]).toContain(
+      latest.triage.scope_assessment
+    );
     expect(Number(latest.triage.recurrence_count_30d)).toBeGreaterThan(0);
     expect(String(latest.triage.multi_ticket_influence_reasoning || "").length).toBeGreaterThan(0);
   });

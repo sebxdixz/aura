@@ -237,6 +237,18 @@
             <div class="res-val" id="resPattern"></div>
           </div>
           <div class="res-card">
+            <div class="res-label">Possible Duplicate</div>
+            <div class="res-val" id="resDuplicate"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Scope Assessment</div>
+            <div class="res-val" id="resScope"></div>
+          </div>
+          <div class="res-card">
+            <div class="res-label">Incident Links</div>
+            <div class="res-val" id="resLinks"></div>
+          </div>
+          <div class="res-card">
             <div class="res-label">Attachment Evidence</div>
             <div class="res-val" id="resAttachment"></div>
           </div>
@@ -393,6 +405,7 @@
         tr.description_score !== undefined ? `Technical description: +${tr.description_score}` : "",
         tr.attachment_score !== undefined ? `Attachment evidence: +${tr.attachment_score}` : "",
         tr.criticality_score !== undefined ? `Critical flow impact: +${tr.criticality_score}` : "",
+        Number(tr.recurrence_count_30d || 0) > 0 ? `Recurring pattern: seen ${tr.recurrence_count_30d} times in 30d` : "",
         tr.severity_score !== undefined ? `Final score: ${tr.severity_score}/100` : ""
       ].filter(Boolean).join(" | ");
       document.getElementById("resRagEvidence").textContent = (tr.rag_evidence && tr.rag_evidence.length)
@@ -405,6 +418,13 @@
         tr.recurrence_count_30d !== undefined ? `seen_30d=${tr.recurrence_count_30d}` : "",
         tr.multi_ticket_influence_reasoning || ""
       ].filter(Boolean).join(" | ");
+      document.getElementById("resDuplicate").textContent = tr.is_duplicate
+        ? `duplicate_of=${tr.duplicate_of_incident_id || "existing_open_incident"} | confidence=${tr.dedup_confidence ?? 0}`
+        : "No active duplicate match detected.";
+      document.getElementById("resScope").textContent = tr.scope_assessment || tr.user_scope || "single_report";
+      document.getElementById("resLinks").textContent = data.related_links && data.related_links.length
+        ? data.related_links.map((link) => `${link.relationship_type}:${link.target_incident_id} (${link.similarity_score})`).join(" | ")
+        : "No persisted incident links yet.";
       document.getElementById("resAttachment").textContent = tr.attachment_summary || attachment.attachment_summary || "No attachment evidence.";
       document.getElementById("resInfluence").textContent = tr.attachment_influence_reasoning || "Attachment did not materially change the triage.";
       document.getElementById("resCode").textContent = tr.proposed_cli_command || "echo 'No CLI action needed.'";
@@ -433,6 +453,9 @@
       }
       if (tr.related_incident_ids && tr.related_incident_ids.length) {
         integrations += `related_incidents=${tr.related_incident_ids.slice(0, 5).join(", ")}\n`;
+      }
+      if (tr.severity_reasoning) {
+        integrations += `why_this_score=${tr.severity_reasoning}\n`;
       }
       integrations += `triage_mode=${tr.triage_mode || "default"}\n`;
       integrations += `llm_mode=${tr.llm_mode || "default"}`;
@@ -481,6 +504,9 @@
       document.getElementById("resScoreBreakdown").textContent = "No final score available.";
       document.getElementById("resRagEvidence").textContent = "No final repository context available.";
       document.getElementById("resPattern").textContent = "Multi-ticket analysis did not complete.";
+      document.getElementById("resDuplicate").textContent = "Duplicate analysis did not complete.";
+      document.getElementById("resScope").textContent = "Scope assessment unavailable.";
+      document.getElementById("resLinks").textContent = "Incident links unavailable.";
       document.getElementById("resAttachment").textContent = data.attachment?.attachment_filename
         ? `Attachment stored: ${data.attachment.attachment_filename}`
         : "No attachment stored.";
